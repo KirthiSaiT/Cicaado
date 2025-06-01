@@ -1,4 +1,3 @@
-
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -48,39 +47,76 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Cybersecurity/Kali Linux Inspired Theme */
 :root {
-  --radius: 0.625rem;
-  --background: linear-gradient(135deg, oklch(0.15 0.05 260) 0%, oklch(0.18 0.06 280) 100%); /* Dark gradient */
-  --foreground: oklch(1 0 0); /* Pure white */
-  --card: oklch(0.22 0.03 260 / 0.9);
-  --card-foreground: oklch(1 0 0);
-  --popover: linear-gradient(135deg, oklch(0.22 0.03 260 / 0.95) 0%, oklch(0.25 0.04 280 / 0.95) 100%);
-  --popover-foreground: oklch(1 0 0);
-  --primary: linear-gradient(135deg, oklch(0.65 0.15 260) 0%, oklch(0.75 0.18 280) 100%);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.30 0.04 260 / 0.8);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.30 0.04 260 / 0.5);
-  --muted-foreground: oklch(1 0 0);
-  --accent: linear-gradient(135deg, oklch(0.35 0.08 260) 0%, oklch(0.40 0.09 280) 100%);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.70 0.19 22);
-  --border: oklch(0.30 0.05 260 / 0.2);
-  --input: oklch(0.25 0.03 260 / 0.5);
-  --ring: oklch(0.60 0.12 260);
-  --chart-1: oklch(0.50 0.20 260);
-  --chart-2: oklch(0.60 0.17 280);
-  --chart-3: oklch(0.70 0.18 300);
-  --chart-4: oklch(0.55 0.22 320);
-  --chart-5: oklch(0.65 0.20 340);
-  --sidebar: linear-gradient(135deg, oklch(0.22 0.03 260 / 0.95) 0%, oklch(0.25 0.04 280 / 0.95) 100%);
-  --sidebar-foreground: oklch(1 0 0);
-  --sidebar-primary: linear-gradient(135deg, oklch(0.50 0.20 260) 0%, oklch(0.60 0.22 280) 100%);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.30 0.04 260 / 0.8);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(0.30 0.05 260 / 0.2);
-  --sidebar-ring: oklch(0.60 0.12 260);
+  --radius: 0.5rem;
+  /* Dark matrix-like background with subtle grid pattern */
+  --background: linear-gradient(135deg, 
+    oklch(0.08 0.02 120) 0%, 
+    oklch(0.12 0.03 140) 25%,
+    oklch(0.06 0.01 160) 50%,
+    oklch(0.10 0.02 100) 100%);
+  --foreground: oklch(0.95 0.02 120); /* Bright green-tinted white */
+  
+  /* Cards with terminal-like appearance */
+  --card: oklch(0.12 0.03 130 / 0.95);
+  --card-foreground: oklch(0.95 0.02 120);
+  
+  /* Popover with subtle glow effect */
+  --popover: linear-gradient(135deg, 
+    oklch(0.15 0.04 130 / 0.98) 0%, 
+    oklch(0.18 0.05 140 / 0.98) 100%);
+  --popover-foreground: oklch(0.95 0.02 120);
+  
+  /* Primary colors inspired by Kali Linux green */
+  --primary: linear-gradient(135deg, 
+    oklch(0.60 0.18 140) 0%, 
+    oklch(0.70 0.20 120) 50%,
+    oklch(0.65 0.22 160) 100%);
+  --primary-foreground: oklch(0.05 0.01 120);
+  
+  /* Secondary with hacker terminal feel */
+  --secondary: oklch(0.20 0.05 130 / 0.8);
+  --secondary-foreground: oklch(0.90 0.03 120);
+  
+  /* Muted with matrix code aesthetic */
+  --muted: oklch(0.18 0.04 140 / 0.6);
+  --muted-foreground: oklch(0.75 0.04 130);
+  
+  /* Accent with neon cyber glow */
+  --accent: linear-gradient(135deg, 
+    oklch(0.45 0.15 140) 0%, 
+    oklch(0.55 0.18 120) 100%);
+  --accent-foreground: oklch(0.95 0.02 120);
+  
+  /* Destructive for security alerts */
+  --destructive: oklch(0.65 0.20 25); /* Cyber red */
+  
+  /* Borders with subtle glow */
+  --border: oklch(0.25 0.06 130 / 0.3);
+  --input: oklch(0.18 0.04 130 / 0.7);
+  --ring: oklch(0.60 0.18 140);
+  
+  /* Chart colors for security dashboards */
+  --chart-1: oklch(0.55 0.20 140); /* Primary green */
+  --chart-2: oklch(0.60 0.18 180); /* Cyan */
+  --chart-3: oklch(0.65 0.16 200); /* Blue */
+  --chart-4: oklch(0.70 0.22 25);  /* Warning red */
+  --chart-5: oklch(0.60 0.15 60);  /* Yellow */
+  
+  /* Sidebar with terminal window feel */
+  --sidebar: linear-gradient(135deg, 
+    oklch(0.14 0.03 130 / 0.98) 0%, 
+    oklch(0.16 0.04 140 / 0.98) 100%);
+  --sidebar-foreground: oklch(0.90 0.03 120);
+  --sidebar-primary: linear-gradient(135deg, 
+    oklch(0.50 0.20 140) 0%, 
+    oklch(0.60 0.22 120) 100%);
+  --sidebar-primary-foreground: oklch(0.05 0.01 120);
+  --sidebar-accent: oklch(0.22 0.05 130 / 0.8);
+  --sidebar-accent-foreground: oklch(0.85 0.04 120);
+  --sidebar-border: oklch(0.25 0.06 130 / 0.4);
+  --sidebar-ring: oklch(0.60 0.18 140);
 }
 
 .light {
@@ -91,13 +127,159 @@
   * {
     @apply border-border outline-ring/50;
   }
+  
   body {
-    @apply bg-background text-white; /* Force white text */
+    @apply bg-background text-foreground;
+    /* Add subtle matrix-like background pattern */
+    background-image: 
+      radial-gradient(circle at 25% 25%, oklch(0.15 0.05 140 / 0.1) 0%, transparent 50%),
+      radial-gradient(circle at 75% 75%, oklch(0.12 0.04 120 / 0.1) 0%, transparent 50%);
+    background-size: 100px 100px;
+    background-attachment: fixed;
   }
+  
   body * {
-    @apply text-white; /* Ensure all descendants have white text */
+    @apply text-foreground;
   }
+  
   .navbar-gradient {
-    background: linear-gradient(135deg, oklch(0.22 0.03 260 / 0.95) 0%, oklch(0.25 0.04 280 / 0.95) 100%);
+    background: linear-gradient(135deg, 
+      oklch(0.16 0.04 130 / 0.98) 0%, 
+      oklch(0.18 0.05 140 / 0.98) 100%);
+    border-bottom: 1px solid oklch(0.30 0.08 140 / 0.3);
   }
+  
+  /* Terminal-like code blocks */
+  pre, code {
+    @apply bg-card/80 text-primary border border-border/50;
+    font-family: 'Courier New', monospace;
+  }
+  
+  /* Cyber glow effects for interactive elements */
+  button:hover, .interactive:hover {
+    box-shadow: 0 0 20px oklch(0.60 0.18 140 / 0.3);
+    transition: box-shadow 0.3s ease;
+  }
+  
+  /* Matrix-style scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: oklch(0.10 0.02 130);
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, 
+      oklch(0.40 0.12 140) 0%, 
+      oklch(0.50 0.15 120) 100%);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, 
+      oklch(0.50 0.15 140) 0%, 
+      oklch(0.60 0.18 120) 100%);
+  }
+}
+
+/* Clerk-specific overrides for white background and black text (Sign In/Up forms only) */
+.cl-signIn-root .cl-card,
+.cl-signUp-root .cl-card,
+.cl-signIn-root .cl-modalContent,
+.cl-signUp-root .cl-modalContent {
+  background: white !important;
+  color: black !important;
+}
+
+.cl-signIn-root .cl-card *,
+.cl-signUp-root .cl-card * {
+  color: black !important;
+}
+
+.cl-signIn-root .cl-formFieldInput,
+.cl-signUp-root .cl-formFieldInput {
+  background: white !important;
+  color: black !important;
+  border-color: #d1d5db !important;
+}
+
+.cl-signIn-root .cl-formFieldInput:focus,
+.cl-signUp-root .cl-formFieldInput:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 1px #3b82f6 !important;
+}
+
+.cl-signIn-root .cl-headerTitle,
+.cl-signIn-root .cl-headerSubtitle,
+.cl-signIn-root .cl-formFieldLabel,
+.cl-signIn-root .cl-footerActionText,
+.cl-signUp-root .cl-headerTitle,
+.cl-signUp-root .cl-headerSubtitle,
+.cl-signUp-root .cl-formFieldLabel,
+.cl-signUp-root .cl-footerActionText {
+  color: black !important;
+}
+
+.cl-signIn-root .cl-formButtonPrimary,
+.cl-signUp-root .cl-formButtonPrimary {
+  background: #3b82f6 !important;
+  color: white !important;
+}
+
+.cl-signIn-root .cl-formButtonPrimary:hover,
+.cl-signUp-root .cl-formButtonPrimary:hover {
+  background: #2563eb !important;
+}
+
+.cl-signIn-root .cl-dividerText,
+.cl-signUp-root .cl-dividerText {
+  color: #6b7280 !important;
+}
+
+.cl-signIn-root .cl-socialButtonsProviderIcon,
+.cl-signUp-root .cl-socialButtonsProviderIcon {
+  color: black !important;
+}
+
+/* UserButton integration with dark theme */
+.cl-userButtonPopoverCard {
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+}
+
+.cl-userButtonPopoverActionButton {
+  color: var(--foreground) !important;
+}
+
+.cl-userButtonPopoverActionButton:hover {
+  background: var(--accent) !important;
+}
+
+.cl-userButtonPopoverActionButtonText {
+  color: var(--foreground) !important;
+}
+
+.cl-userButtonPopoverActionButtonIcon {
+  color: var(--muted-foreground) !important;
+}
+
+.cl-userPreviewMainIdentifier {
+  color: var(--foreground) !important;
+}
+
+.cl-userPreviewSecondaryIdentifier {
+  color: var(--muted-foreground) !important;
+}
+
+/* Ensure navbar items are properly styled */
+.navbar-gradient nav a {
+  color: var(--foreground) !important;
+  transition: color 0.2s ease;
+}
+
+.navbar-gradient nav a:hover {
+  color: var(--primary) !important;
 }
