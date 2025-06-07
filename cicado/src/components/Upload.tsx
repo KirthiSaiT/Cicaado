@@ -3,8 +3,12 @@ import { FileUpload } from "@/components/ui/file-upload";
 import Nav from "@/components/Nav";
 
 export default function Upload() {
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; url: string } | null>(null);
-  const [fileUploadKey, setFileUploadKey] = useState(Date.now()); // For re-rendering FileUpload
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; url: string; key?: string } | null>(null);
+  const [fileUploadKey, setFileUploadKey] = useState(Date.now());
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const [selectedTool, setSelectedTool] = useState("cat");
 
   useEffect(() => {
     const lastFile = localStorage.getItem("lastUploadedFile");
@@ -27,8 +31,8 @@ export default function Upload() {
 
       const data = await res.json();
 
-      if (res.ok && data.url) {
-        const uploaded = { name: files[0].name, url: data.url };
+      if (res.ok && data.url && data.key) {
+        const uploaded = { name: files[0].name, url: data.url, key: data.key };
         setUploadedFile(uploaded);
         localStorage.setItem("lastUploadedFile", JSON.stringify(uploaded));
       } else {
@@ -41,9 +45,30 @@ export default function Upload() {
     }
   };
 
-  const isImage = (fileName: string) => {
-    return /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileName);
+  const handleAnalysis = async () => {
+    if (!uploadedFile?.key) return;
+    setIsAnalysing(true);
+    setAnalysisResult(null);
+    setAnalysisError(null);
+    try {
+      const res = await fetch("/api/run-command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: uploadedFile.key, tool: selectedTool }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAnalysisResult(data.output);
+      } else {
+        setAnalysisError(data.error);
+      }
+    } catch (err) {
+      setAnalysisError("Failed to run analysis.");
+    }
+    setIsAnalysing(false);
   };
+
+  const isImage = (fileName: string) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileName);
 
   const getFileIcon = (fileName: string) => {
     if (isImage(fileName)) return "🖼️";
@@ -56,14 +81,14 @@ export default function Upload() {
     return "📁";
   };
 
-  const getFileSizeDisplay = () => {
-    return "Size: Unknown";
-  };
+  const getFileSizeDisplay = () => "Size: Unknown";
 
   const clearUploadedFile = () => {
     setUploadedFile(null);
+    setAnalysisResult(null);
+    setAnalysisError(null);
     localStorage.removeItem("lastUploadedFile");
-    setFileUploadKey(Date.now()); // Reset FileUpload
+    setFileUploadKey(Date.now());
   };
 
   return (
@@ -71,16 +96,13 @@ export default function Upload() {
       <Nav />
       <main className="container mx-auto mt-24 px-4 py-8">
         <h1 className="text-4xl font-bold mb-4">Upload Your Files</h1>
-        <p className="text-lg mb-8">
-          Use the file uploader below to select or drag and drop your files.
-        </p>
+        <p className="text-lg mb-8">Use the file uploader below to select or drag and drop your files.</p>
 
-        {/* FileUpload with key to reset */}
         <FileUpload key={fileUploadKey} onChange={handleFileChange} />
 
         {uploadedFile && (
           <div className="mt-8">
-            <h2 className="text-white text-lg font-medium mb-4">Selected Files:</h2>
+            <h2 className="text-white text-lg font-medium mb-4">Selected File:</h2>
 
             <div className="bg-slate-800 border border-slate-600 rounded-lg p-4 mb-2">
               <div className="flex items-center justify-between text-gray-300">
@@ -100,20 +122,48 @@ export default function Upload() {
               ❌ Delete File
             </button>
 
-            {/* Start Analysis Button */}
-            <button className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-4 px-6 rounded-lg transition-colors mb-4">
-              Start Analysis
+            {/* Tool Selector */}
+            <div className="mb-4">
+              <label className="text-white mr-2">Select Tool:</label>
+              <select
+                value={selectedTool}
+                onChange={e => setSelectedTool(e.target.value)}
+                className="bg-gray-800 text-white rounded px-2 py-1"
+              >
+                <option value="cat">cat</option>
+                <option value="strings">strings</option>
+                <option value="binwalk">binwalk</option>
+                <option value="foremost">foremost</option>
+              </select>
+            </div>
+
+            {/* Analysis Button */}
+            <button
+              className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-4 px-6 rounded-lg transition-colors mb-4"
+              onClick={handleAnalysis}
+              disabled={isAnalysing}
+            >
+              {isAnalysing ? "Analysing..." : "Start Analysis"}
             </button>
 
+            {/* Analysis Result */}
+            {analysisResult && (
+              <pre className="bg-black text-green-400 p-4 rounded overflow-x-auto max-h-96">
+                {analysisResult}
+              </pre>
+            )}
+            {analysisError && (
+              <div className="text-red-500">{analysisError}</div>
+            )}
+
             {/* Security Notice */}
-            <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4">
+            <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4 mt-4">
               <div className="flex items-start space-x-3">
                 <div className="text-amber-500 mt-0.5">⚠️</div>
                 <div>
                   <h3 className="text-amber-400 font-medium mb-1">Security Notice:</h3>
                   <p className="text-gray-300 text-sm">
-                    Files are processed in a secure sandbox environment. No data is stored
-                    permanently after analysis.
+                    Files are processed in a secure sandbox environment. No data is stored permanently after analysis.
                   </p>
                 </div>
               </div>
