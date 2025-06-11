@@ -20,6 +20,8 @@ def process():
     password = data.get('password', '')
     bucket = os.environ.get('AWS_S3_BUCKET_NAME')
 
+    print(f"Received s3_key: {s3_key}, Bucket: {bucket}")
+
     if not s3_key or not bucket:
         return jsonify({'error': 'Missing S3 key or bucket'}), 400
 
