@@ -1,0 +1,32 @@
+services:
+  processor:
+    build:
+      context: ./processor
+      dockerfile: Dockerfile
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./processor:/app:cached
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      - NEXT_PUBLIC_PROCESSOR_URL=http://processor:5000
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app:cached
+      - /app/.next
+    depends_on:
+      - processor

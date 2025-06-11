@@ -101,7 +101,6 @@ export default function Nav() {
 
         <MobileNavMenu
           isOpen={isMobileNavOpen}
-          onClose={() => setIsMobileNavOpen(false)}
           className="fixed top-16 left-0 right-0 bg-card border-t border-border/50 shadow z-40"
         >
           <div className="px-4 py-6 space-y-4 max-h-screen overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border/50">

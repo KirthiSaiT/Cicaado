@@ -8,7 +8,6 @@ export default function Upload() {
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isAnalysing, setIsAnalysing] = useState(false);
-  const [selectedTool, setSelectedTool] = useState("cat");
 
   useEffect(() => {
     const lastFile = localStorage.getItem("lastUploadedFile");
@@ -54,15 +53,22 @@ export default function Upload() {
       const res = await fetch("/api/run-command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: uploadedFile.key, tool: selectedTool }),
+        body: JSON.stringify({ key: uploadedFile.key }),
       });
       const data = await res.json();
       if (res.ok) {
-        setAnalysisResult(data.output);
+        let allResults = "";
+        for (const toolName in data) {
+          if (Object.prototype.hasOwnProperty.call(data, toolName)) {
+            allResults += `--- ${toolName.toUpperCase()} ---\n${data[toolName]}\n\n`;
+          }
+        }
+        setAnalysisResult(allResults);
       } else {
         setAnalysisError(data.error);
       }
     } catch (err) {
+      console.error(err);
       setAnalysisError("Failed to run analysis.");
     }
     setIsAnalysing(false);
@@ -121,21 +127,6 @@ export default function Upload() {
             >
               ❌ Delete File
             </button>
-
-            {/* Tool Selector */}
-            <div className="mb-4">
-              <label className="text-white mr-2">Select Tool:</label>
-              <select
-                value={selectedTool}
-                onChange={e => setSelectedTool(e.target.value)}
-                className="bg-gray-800 text-white rounded px-2 py-1"
-              >
-                <option value="cat">cat</option>
-                <option value="strings">strings</option>
-                <option value="binwalk">binwalk</option>
-                <option value="foremost">foremost</option>
-              </select>
-            </div>
 
             {/* Analysis Button */}
             <button
