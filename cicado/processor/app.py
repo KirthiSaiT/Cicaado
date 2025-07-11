@@ -1,10 +1,18 @@
 from flask import Flask, request, jsonify
-import boto3
 import tempfile
 import os
 import subprocess
+import base64
+from PIL import Image
+import io
+from supabase import create_client, Client
 
 app = Flask(__name__)
+
+SUPABASE_URL = 'https://whgjhwtcxkxhzkxrndlz.supabase.co'
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndoZ2pod3RjeGt4aHpreHJuZGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIyNTMxNTksImV4cCI6MjA2NzgyOTE1OX0.6iMNENGsz08DGs2MNrbubjyTalrDM8jgiBPeJ7VVYd4')
+BUCKET = 'files'
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def run_command(cmd):
     try:
@@ -13,28 +21,51 @@ def run_command(cmd):
     except Exception as e:
         return str(e)
 
+def analyze_stegsolve(image_path):
+    results = []
+    try:
+        modes = [
+            "Red plane 0",
+            "Green plane 0",
+            "Blue plane 0",
+            "Alpha plane 0",
+            "LSB of Red plane",
+            "LSB of Green plane",
+            "LSB of Blue plane",
+            "LSB of Alpha plane"
+        ]
+        for mode in modes:
+            cmd = f"java -jar /usr/local/bin/stegsolve.jar -s {mode} -o /tmp/stegsolve_out.png {image_path}"
+            subprocess.run(cmd, shell=True, capture_output=True)
+            if os.path.exists("/tmp/stegsolve_out.png"):
+                with open("/tmp/stegsolve_out.png", "rb") as f:
+                    img_data = f.read()
+                    results.append({
+                        "mode": mode,
+                        "image": base64.b64encode(img_data).decode('utf-8')
+                    })
+                os.remove("/tmp/stegsolve_out.png")
+    except Exception as e:
+        results.append({"error": str(e)})
+    return results
+
 @app.route('/process', methods=['POST'])
 def process():
     data = request.json
-    s3_key = data.get('key')
+    file_key = data.get('key')
     password = data.get('password', '')
-    bucket = os.environ.get('AWS_S3_BUCKET_NAME')
-
-    print(f"Received s3_key: {s3_key}, Bucket: {bucket}")
-
-    if not s3_key or not bucket:
-        return jsonify({'error': 'Missing S3 key or bucket'}), 400
-
-    s3 = boto3.client('s3')
+    print(f"Received file_key: {file_key}")
+    if not file_key:
+        return jsonify({'error': 'Missing file key'}), 400
     with tempfile.TemporaryDirectory() as tmpdir:
-        local_path = os.path.join(tmpdir, os.path.basename(s3_key))
+        local_path = os.path.join(tmpdir, os.path.basename(file_key))
+        # Download file from Supabase Storage
         try:
-            s3.download_file(bucket, s3_key, local_path)
+            response = supabase.storage.from_(BUCKET).download(file_key)
+            with open(local_path, 'wb') as f:
+                f.write(response)
         except Exception as e:
-            return jsonify({
-                'error': f"Failed to download '{s3_key}' from '{bucket}': {str(e)}"
-            }), 500
-
+            return jsonify({'error': f'Failed to download {file_key} from Supabase: {str(e)}'}), 500
         tools = {
             "cat": f"cat '{local_path}'",
             "strings": f"strings '{local_path}'",
@@ -46,11 +77,10 @@ def process():
             "exiftool": f"exiftool '{local_path}'",
             "pngcheck": f"pngcheck '{local_path}'"
         }
-
         results = {}
         for tool, cmd in tools.items():
             results[tool] = run_command(cmd)
-
+        results["stegsolve"] = analyze_stegsolve(local_path)
         return jsonify(results)
 
 if __name__ == "__main__":
