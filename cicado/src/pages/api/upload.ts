@@ -5,6 +5,8 @@ import formidable, { File as FormidableFile } from "formidable";
 import fs from "fs";
 import { createClient } from '@supabase/supabase-js';
 
+import { v4 as uuidv4 } from 'uuid';
+
 const supabaseUrl = 'https://whgjhwtcxkxhzkxrndlz.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndoZ2pod3RjeGt4aHpreHJuZGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIyNTMxNTksImV4cCI6MjA2NzgyOTE1OX0.6iMNENGsz08DGs2MNrbubjyTalrDM8jgiBPeJ7VVYd4';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -44,15 +46,17 @@ export default async function handler(
         return res.status(400).json({ error: "No valid file uploaded." });
       }
       const fileBuffer = fs.readFileSync(uploadedFile.filepath);
-      const fileName = uploadedFile.originalFilename || `upload-${Date.now()}`;
+      const originalName = uploadedFile.originalFilename || `upload`;
+      const uniqueId = uuidv4();
+      const fileName = `${uniqueId}-${originalName}`;
+      console.log('Uploading as:', fileName);
       // Upload to Supabase Storage
       const { error } = await supabase.storage.from(bucket).upload(fileName, fileBuffer, {
         contentType: uploadedFile.mimetype || 'application/octet-stream',
-        upsert: true,
       });
       if (error) {
         console.error('Supabase upload error:', error);
-        return res.status(500).json({ error: 'Failed to upload file to Supabase.' });
+        return res.status(500).json({ error: `Supabase upload error: ${JSON.stringify(error)}` });
       }
       // Get public URL
       const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
