@@ -2,10 +2,33 @@ import { useState, useEffect } from "react";
 import { FileUpload } from "@/components/ui/file-upload";
 import Nav from "@/components/Nav";
 
+// ToolResultCard: a separate component for each tool's output
+type AnalysisResult = {
+  [tool: string]: string | object | undefined;
+};
+type ToolResultCardProps = { tool: string; result: string | object | undefined };
+function ToolResultCard({ tool, result }: ToolResultCardProps) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+      <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+        {tool}
+      </h3>
+      <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4">
+        {result
+          ? typeof result === 'string'
+            ? result
+            : JSON.stringify(result, null, 2)
+          : 'No output'}
+      </pre>
+    </div>
+  );
+}
+
 export default function Upload() {
   const [uploadedFile, setUploadedFile] = useState<{ name: string; url: string; key?: string } | null>(null);
   const [fileUploadKey, setFileUploadKey] = useState(Date.now());
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isAnalysing, setIsAnalysing] = useState(false);
 
@@ -57,13 +80,7 @@ export default function Upload() {
       });
       const data = await res.json();
       if (res.ok) {
-        let allResults = "";
-        for (const toolName in data) {
-          if (Object.prototype.hasOwnProperty.call(data, toolName)) {
-            allResults += `--- ${toolName.toUpperCase()} ---\n${data[toolName]}\n\n`;
-          }
-        }
-        setAnalysisResult(allResults);
+        setAnalysisResult(data);
       } else {
         setAnalysisError(data.error);
       }
@@ -130,21 +147,39 @@ export default function Upload() {
 
             {/* Analysis Button */}
             <button
-              className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-4 px-6 rounded-lg transition-colors mb-4"
+              className="w-full bg-gradient-to-r from-green-500 to-lime-600 hover:from-green-600 hover:to-lime-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 shadow-lg mb-4"
               onClick={handleAnalysis}
               disabled={isAnalysing}
             >
-              {isAnalysing ? "Analysing..." : "Start Analysis"}
+              {isAnalysing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                  Analysing...
+                </span>
+              ) : "Start Analysis"}
             </button>
 
             {/* Analysis Result */}
-            {analysisResult && (
-              <pre className="bg-black text-green-400 p-4 rounded overflow-x-auto max-h-96">
-                {analysisResult}
-              </pre>
+            {analysisResult && typeof analysisResult === 'object' && (
+              <div className="space-y-8 mt-10">
+                {[
+                  'binwalk',
+                  'cat',
+                  'exiftool',
+                  'strings',
+                  'foremost',
+                  'zsteg',
+                  'steghide',
+                  'outguess',
+                  'pngcheck',
+                  'stegsolve',
+                ].map((tool) => (
+                  <ToolResultCard key={tool} tool={tool} result={analysisResult[tool]} />
+                ))}
+              </div>
             )}
             {analysisError && (
-              <div className="text-red-500">{analysisError}</div>
+              <div className="text-red-500 mt-4">{analysisError}</div>
             )}
 
             {/* Security Notice */}
