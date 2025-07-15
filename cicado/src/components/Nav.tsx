@@ -18,8 +18,8 @@ export default function Nav() {
   const navItems = [
     { name: "Home", link: "/" },
     { name: "CheatSheet", link: "/cheatsheet" },
-    { name: "GitHub", link: "/github" },
-    { name: "Blog", link: "/blog" },
+    { name: "GitHub", link: "https://github.com/KirthiSaiT/Cicaado", external: true },
+    { name: "Blog", link: "https://www.linkedin.com/in/kirthi-sai/", external: true },
     { name: "Contact", link: "/contact" },
   ];
 
@@ -108,6 +108,8 @@ export default function Nav() {
               <a
                 key={`mobile-link-${idx}`}
                 href={item.link}
+                target={item.external ? "_blank" : undefined}
+                rel={item.external ? "noopener noreferrer" : undefined}
                 className="block px-4 py-3 text-lg text-foreground hover:bg-accent/10 rounded-lg transition-all duration-200 border border-transparent hover:border-border/50"
                 onClick={() => setIsMobileNavOpen(false)}
               >
