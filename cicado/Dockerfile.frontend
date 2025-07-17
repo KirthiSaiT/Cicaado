@@ -5,6 +5,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 RUN npm install --save-dev @types/uuid
+# Install dependencies including sharp
+RUN npm install --legacy-peer-deps sharp
 
 COPY . .
 RUN npm run build

@@ -1,10 +1,39 @@
 import { NextResponse } from 'next/server';
-import { writeFile } from 'fs/promises';
-import { join } from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import sharp from 'sharp';
 
-const execAsync = promisify(exec);
+interface RGBChannel {
+  red: number[][];
+  green: number[][];
+  blue: number[][];
+}
+
+interface BitPlane {
+  plane: number;
+  red: number[][];
+  green: number[][];
+  blue: number[][];
+}
+
+interface AnalysisResult {
+  filename: string;
+  dimensions: { width: number; height: number };
+  rgbChannels: RGBChannel;
+  bitPlanes: BitPlane[];
+  lsbAnalysis: {
+    red: number[][];
+    green: number[][];
+    blue: number[][];
+  };
+  timestamp: string;
+}
+
+function extractBitPlane(value: number, bitPosition: number): number {
+  return (value >> bitPosition) & 1;
+}
+
+function extractLSB(value: number): number {
+  return value & 1;
+}
 
 export async function POST(request: Request) {
   try {
@@ -18,35 +47,109 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create a temporary directory for processing
-    const tempDir = join(process.cwd(), 'tmp');
-    const tempFilePath = join(tempDir, file.name);
-
-    // Convert File to Buffer and save it
+    // Convert File to Buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(tempFilePath, buffer);
 
-    // Run Stegsolve analysis
-    // Note: This assumes Stegsolve is installed and available in the system
-    const { stdout, stderr } = await execAsync(`stegsolve ${tempFilePath}`);
-
-    if (stderr) {
-      console.error('Stegsolve error:', stderr);
+    // Process image with Sharp
+    const image = sharp(buffer);
+    const metadata = await image.metadata();
+    
+    if (!metadata.width || !metadata.height) {
       return NextResponse.json(
-        { error: 'Error analyzing image' },
-        { status: 500 }
+        { error: 'Invalid image format' },
+        { status: 400 }
       );
     }
 
-    // Process the output and return results
-    const results = {
+    // Get raw pixel data
+    const { data } = await image.raw().toBuffer({ resolveWithObject: true });
+    
+    // Initialize arrays for RGB channels
+    const redChannel: number[][] = [];
+    const greenChannel: number[][] = [];
+    const blueChannel: number[][] = [];
+
+    // Extract RGB channels
+    for (let y = 0; y < metadata.height; y++) {
+      redChannel[y] = [];
+      greenChannel[y] = [];
+      blueChannel[y] = [];
+      
+      for (let x = 0; x < metadata.width; x++) {
+        const index = (y * metadata.width + x) * 3;
+        redChannel[y][x] = data[index];
+        greenChannel[y][x] = data[index + 1];
+        blueChannel[y][x] = data[index + 2];
+      }
+    }
+
+    // Extract bit planes (0-7) for each channel
+    const bitPlanes: BitPlane[] = [];
+    for (let bit = 0; bit < 8; bit++) {
+      const redPlane: number[][] = [];
+      const greenPlane: number[][] = [];
+      const bluePlane: number[][] = [];
+
+      for (let y = 0; y < metadata.height; y++) {
+        redPlane[y] = [];
+        greenPlane[y] = [];
+        bluePlane[y] = [];
+        
+        for (let x = 0; x < metadata.width; x++) {
+          redPlane[y][x] = extractBitPlane(redChannel[y][x], bit);
+          greenPlane[y][x] = extractBitPlane(greenChannel[y][x], bit);
+          bluePlane[y][x] = extractBitPlane(blueChannel[y][x], bit);
+        }
+      }
+
+      bitPlanes.push({
+        plane: bit,
+        red: redPlane,
+        green: greenPlane,
+        blue: bluePlane
+      });
+    }
+
+    // Extract LSB (Least Significant Bit) for steganography detection
+    const lsbRed: number[][] = [];
+    const lsbGreen: number[][] = [];
+    const lsbBlue: number[][] = [];
+
+    for (let y = 0; y < metadata.height; y++) {
+      lsbRed[y] = [];
+      lsbGreen[y] = [];
+      lsbBlue[y] = [];
+      
+      for (let x = 0; x < metadata.width; x++) {
+        lsbRed[y][x] = extractLSB(redChannel[y][x]);
+        lsbGreen[y][x] = extractLSB(greenChannel[y][x]);
+        lsbBlue[y][x] = extractLSB(blueChannel[y][x]);
+      }
+    }
+
+    // Create analysis result
+    const result: AnalysisResult = {
       filename: file.name,
-      analysis: stdout,
-      timestamp: new Date().toISOString(),
+      dimensions: {
+        width: metadata.width,
+        height: metadata.height
+      },
+      rgbChannels: {
+        red: redChannel,
+        green: greenChannel,
+        blue: blueChannel
+      },
+      bitPlanes: bitPlanes,
+      lsbAnalysis: {
+        red: lsbRed,
+        green: lsbGreen,
+        blue: lsbBlue
+      },
+      timestamp: new Date().toISOString()
     };
 
-    return NextResponse.json(results);
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error processing image:', error);
     return NextResponse.json(

@@ -1,13 +1,51 @@
 import { useState, useEffect } from "react";
 import { FileUpload } from "@/components/ui/file-upload";
-import Nav from "@/components/Nav";
+import Image from 'next/image';
 
 // ToolResultCard: a separate component for each tool's output
 type AnalysisResult = {
   [tool: string]: string | object | undefined;
 };
+
+interface StegsolveResultItem {
+  mode: string;
+  image?: string;
+  error?: string;
+}
+
 type ToolResultCardProps = { tool: string; result: string | object | undefined };
 function ToolResultCard({ tool, result }: ToolResultCardProps) {
+  if (tool === 'stegsolve' && Array.isArray(result)) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+          {tool}
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {result.length === 0 && <div className="text-gray-400 col-span-4">No bit plane/LSB images found.</div>}
+          {(result as StegsolveResultItem[]).map((item, idx) => (
+            <div key={idx} className="flex flex-col items-center">
+              <div className="text-xs text-lime-300 mb-1 text-center">{item.mode}</div>
+              {item.image ? (
+                <Image
+                  src={`data:image/png;base64,${item.image}`}
+                  alt={item.mode}
+                  width={96}
+                  height={96}
+                  className="w-24 h-24 object-contain border border-zinc-700 rounded mb-1 bg-black"
+                  loader={({ src }) => src}
+                  unoptimized
+                />
+              ) : (
+                <div className="w-24 h-24 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-gray-500">No image</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
       <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
@@ -25,7 +63,7 @@ function ToolResultCard({ tool, result }: ToolResultCardProps) {
   );
 }
 
-export default function Upload() {
+export default function Upload({ onImageUpload }: { onImageUpload?: (file: File, url: string) => void } = {}) {
   const [uploadedFile, setUploadedFile] = useState<{ name: string; url: string; key?: string } | null>(null);
   const [fileUploadKey, setFileUploadKey] = useState(Date.now());
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -57,6 +95,9 @@ export default function Upload() {
         const uploaded = { name: files[0].name, url: data.url, key: data.key };
         setUploadedFile(uploaded);
         localStorage.setItem("lastUploadedFile", JSON.stringify(uploaded));
+        if (onImageUpload && isImage(files[0].name)) {
+          onImageUpload(files[0], data.url);
+        }
       } else {
         console.error(data);
         alert("Upload failed.");
@@ -116,7 +157,6 @@ export default function Upload() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Nav />
       <main className="container mx-auto mt-24 px-4 py-8">
         <h1 className="text-4xl font-bold mb-4">Upload Your Files</h1>
         <p className="text-lg mb-8">Use the file uploader below to select or drag and drop your files.</p>
