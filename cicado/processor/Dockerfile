@@ -19,7 +19,10 @@ RUN apt-get update && \
         ruby-dev \
         default-jdk \
         git \
-        wget
+        wget \
+        binutils \
+        coreutils \
+        util-linux
 
 RUN gem install zsteg
 

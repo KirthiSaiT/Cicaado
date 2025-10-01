@@ -11,10 +11,20 @@ app = Flask(__name__)
 
 def run_command(cmd):
     try:
+        # Add better error handling and logging
+        print(f"Executing command: {cmd}")
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
-        return result.stdout + result.stderr
+        output = result.stdout + result.stderr
+        print(f"Command output: {output}")
+        return output
+    except subprocess.TimeoutExpired:
+        error_msg = "Command timed out after 60 seconds"
+        print(error_msg)
+        return error_msg
     except Exception as e:
-        return str(e)
+        error_msg = f"Error executing command: {str(e)}"
+        print(error_msg)
+        return error_msg
 
 def analyze_stegsolve(image_path):
     results = []
@@ -35,6 +45,7 @@ def analyze_stegsolve(image_path):
         ]
         for mode in modes:
             cmd = f"java -jar /usr/local/bin/stegsolve.jar -s '{mode}' -o /tmp/stegsolve_out.png '{image_path}'"
+            print(f"Running stegsolve command: {cmd}")
             subprocess.run(cmd, shell=True, capture_output=True)
             if os.path.exists("/tmp/stegsolve_out.png"):
                 with open("/tmp/stegsolve_out.png", "rb") as f:
@@ -45,7 +56,9 @@ def analyze_stegsolve(image_path):
                     })
                 os.remove("/tmp/stegsolve_out.png")
     except Exception as e:
-        results.append({"error": str(e)})
+        error_msg = {"error": str(e)}
+        print(f"Stegsolve error: {error_msg}")
+        results.append(error_msg)
     return results
 
 @app.route('/process', methods=['POST'])
@@ -90,25 +103,30 @@ def process():
         os.unlink(local_path)  # Clean up
         return jsonify({'error': f'Cannot access temporary file: {str(e)}'}), 400
     
-    # Create a temporary directory for output files
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tools = {
-            "cat": f"cat '{local_path}'",
-            "strings": f"strings '{local_path}'",
-            "binwalk": f"binwalk '{local_path}'",
-            "foremost": f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out'",
-            "zsteg": f"zsteg '{local_path}'",
-            "steghide": f"steghide info '{local_path}' -p ''",  # Empty password by default
-            "outguess": f"outguess -r '{local_path}' '{tmpdir}/outguess_out' && cat '{tmpdir}/outguess_out' 2>/dev/null",
-            "exiftool": f"exiftool '{local_path}'",
-            "pngcheck": f"pngcheck '{local_path}'"
-        }
-        results = {}
-        for tool, cmd in tools.items():
-            results[tool] = run_command(cmd)
-        results["stegsolve"] = analyze_stegsolve(local_path)
-        
-        return jsonify(results)
+    try:
+        # Create a temporary directory for output files
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tools = {
+                "cat": f"cat '{local_path}'",
+                "strings": f"strings -n 4 '{local_path}' || echo 'Strings command failed or no output'",
+                "binwalk": f"binwalk '{local_path}'",
+                "foremost": f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out' 2>/dev/null || echo 'Foremost failed or no output'",
+                "zsteg": f"zsteg '{local_path}' 2>&1 || echo 'Zsteg failed or no output'",
+                "steghide": f"steghide info '{local_path}' -p '' 2>&1 || echo 'Steghide failed or no hidden data'",
+                "outguess": f"outguess -r '{local_path}' '{tmpdir}/outguess_out' 2>/dev/null && cat '{tmpdir}/outguess_out' 2>/dev/null || echo 'Outguess failed or no hidden data'",
+                "exiftool": f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'",
+                "pngcheck": f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
+            }
+            
+            results = {}
+            for tool, cmd in tools.items():
+                print(f"Running {tool} analysis...")
+                results[tool] = run_command(cmd)
+                
+            results["stegsolve"] = analyze_stegsolve(local_path)
+            
+            print("All analyses completed successfully")
+            return jsonify(results)
     finally:
         # Clean up the temporary file
         if 'local_path' in locals() and os.path.exists(local_path):
