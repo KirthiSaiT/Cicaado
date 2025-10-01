@@ -3,14 +3,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import formidable, { File as FormidableFile } from "formidable";
 import fs from "fs";
-import { createClient } from '@supabase/supabase-js';
-
 import { v4 as uuidv4 } from 'uuid';
-
-const supabaseUrl = 'https://whgjhwtcxkxhzkxrndlz.supabase.co';
-const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndoZ2pod3RjeGt4aHpreHJuZGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIyNTMxNTksImV4cCI6MjA2NzgyOTE1OX0.6iMNENGsz08DGs2MNrbubjyTalrDM8jgiBPeJ7VVYd4';
-const supabase = createClient(supabaseUrl, supabaseKey);
-const bucket = 'files';
+import clientPromise from '@/lib/mongodb';
+import { GridFSBucket, ObjectId } from 'mongodb';
 
 export const config = {
   api: {
@@ -45,24 +40,59 @@ export default async function handler(
         console.error("Invalid file received:", uploadedFile);
         return res.status(400).json({ error: "No valid file uploaded." });
       }
+      
       const fileBuffer = fs.readFileSync(uploadedFile.filepath);
       const originalName = uploadedFile.originalFilename || `upload`;
       const uniqueId = uuidv4();
       const fileName = `${uniqueId}-${originalName}`;
-      console.log('Uploading as:', fileName);
-      // Upload to Supabase Storage
-      const { error } = await supabase.storage.from(bucket).upload(fileName, fileBuffer, {
-        contentType: uploadedFile.mimetype || 'application/octet-stream',
+      const contentType = uploadedFile.mimetype || 'application/octet-stream';
+      
+      // Connect to MongoDB
+      const client = await clientPromise;
+      const db = client.db();
+      
+      // Create GridFS bucket
+      const bucket = new GridFSBucket(db, { bucketName: 'uploads' });
+      
+      // Upload file to GridFS
+      const uploadStream = bucket.openUploadStream(fileName, {
+        contentType: contentType,
+        metadata: {
+          originalName: originalName,
+          uploadDate: new Date(),
+          size: fileBuffer.length
+        }
       });
-      if (error) {
-        console.error('Supabase upload error:', error);
-        return res.status(500).json({ error: `Supabase upload error: ${JSON.stringify(error)}` });
+      
+      // Write file buffer to GridFS
+      uploadStream.end(fileBuffer);
+      
+      // Wait for the upload to complete
+      await new Promise((resolve, reject) => {
+        uploadStream.on('finish', resolve);
+        uploadStream.on('error', (error) => {
+          console.error('GridFS upload error:', error);
+          reject(new Error(`Failed to upload file to MongoDB: ${error.message}`));
+        });
+      });
+      
+      // Get the file ID from the upload stream
+      const fileId = uploadStream.id;
+      
+      // Verify the file was uploaded successfully
+      const verifyFiles = await bucket.find({ _id: fileId }).toArray();
+      if (verifyFiles.length === 0) {
+        throw new Error('File upload verification failed: File not found in GridFS after upload');
       }
-      // Get public URL
-      const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
-      return res.status(200).json({ url: publicUrlData.publicUrl, key: fileName });
+      
+      // Return file information
+      return res.status(200).json({ 
+        url: `/api/file/${fileId}`, 
+        key: fileId.toString() 
+      });
     } catch (err) {
       console.error("Upload error:", err);
+      // Make sure we're sending JSON response
       return res.status(500).json({ error: "Failed to upload file." });
     }
   } else if (req.method === "DELETE") {
@@ -71,17 +101,23 @@ export default async function handler(
       return res.status(400).json({ error: "Missing or invalid file key." });
     }
     try {
-      const { error } = await supabase.storage.from(bucket).remove([key]);
-      if (error) {
-        console.error('Supabase delete error:', error);
-        return res.status(500).json({ error: 'Failed to delete file from Supabase.' });
-      }
-      return res.status(200).json({ message: "File deleted successfully from Supabase." });
+      // Connect to MongoDB
+      const client = await clientPromise;
+      const db = client.db();
+      
+      // Create GridFS bucket
+      const bucket = new GridFSBucket(db, { bucketName: 'uploads' });
+      
+      // Delete file from GridFS
+      await bucket.delete(new ObjectId(key));
+      
+      return res.status(200).json({ message: "File deleted successfully from MongoDB." });
     } catch (err) {
       console.error("Delete error:", err);
-      return res.status(500).json({ error: "Failed to delete file from Supabase." });
+      return res.status(500).json({ error: "Failed to delete file from MongoDB." });
     }
   } else {
+    res.setHeader('Allow', ['POST', 'DELETE']);
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 
 interface RGBChannel {
@@ -72,7 +72,7 @@ const Stegsolve: React.FC<StegsolveProps> = ({ file, onAnalysisComplete }) => {
     }
   };
 
-  const drawChannel = (channelData: number[][], canvas: HTMLCanvasElement, color: string) => {
+  const drawChannel = useCallback((channelData: number[][], canvas: HTMLCanvasElement, color: string) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -106,9 +106,9 @@ const Stegsolve: React.FC<StegsolveProps> = ({ file, onAnalysisComplete }) => {
     }
 
     ctx.putImageData(imageData, 0, 0);
-  };
+  }, [result]);
 
-  const drawBitPlane = (bitPlaneData: number[][], canvas: HTMLCanvasElement) => {
+  const drawBitPlane = useCallback((bitPlaneData: number[][], canvas: HTMLCanvasElement) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -132,7 +132,7 @@ const Stegsolve: React.FC<StegsolveProps> = ({ file, onAnalysisComplete }) => {
     }
 
     ctx.putImageData(imageData, 0, 0);
-  };
+  }, [result]);
 
   useEffect(() => {
     if (result && canvasRef.current) {
@@ -148,7 +148,7 @@ const Stegsolve: React.FC<StegsolveProps> = ({ file, onAnalysisComplete }) => {
         drawChannel(channelData, canvas, selectedChannel);
       }
     }
-  }, [result, selectedChannel, showLSB]);
+  }, [result, selectedChannel, showLSB, drawBitPlane, drawChannel]);
 
   if (!file) return null;
 
@@ -261,4 +261,4 @@ const Stegsolve: React.FC<StegsolveProps> = ({ file, onAnalysisComplete }) => {
   );
 };
 
-export default Stegsolve; 
+export default Stegsolve;

@@ -23,10 +23,15 @@ RUN apt-get update && \
 
 RUN gem install zsteg
 
+# Download stegsolve.jar with fallback options
+RUN wget -O /usr/local/bin/stegsolve.jar https://github.com/Giotino/stegsolve/releases/download/v1.0/stegsolve.jar || \
+    wget -O /usr/local/bin/stegsolve.jar https://raw.githubusercontent.com/b3nj5m1n/StegSolve/master/StegSolve.jar || \
+    echo "Could not download stegsolve.jar, continuing without it"
+
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN /opt/venv/bin/python -m ensurepip --upgrade
-RUN /opt/venv/bin/pip install --no-cache-dir flask pillow supabase
+RUN /opt/venv/bin/pip install --no-cache-dir flask pillow pymongo dnspython
 
 WORKDIR /app
 

@@ -4,10 +4,7 @@ services:
       context: ./processor
       dockerfile: Dockerfile
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
-      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
+      - MONGODB_URI=${MONGODB_URI}
     ports:
       - "5000:5000"
     volumes:
@@ -19,12 +16,11 @@ services:
       dockerfile: Dockerfile.frontend
     environment:
       - NEXT_PUBLIC_PROCESSOR_URL=http://processor:5000
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
-      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - MONGODB_URI=${MONGODB_URI}
     ports:
-      - "3000:3000"
+      - "3001:3000"  # Changed to port 3001 to avoid conflicts
     volumes:
       - .:/app:cached
       - /app/.next

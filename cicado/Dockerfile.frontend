@@ -3,10 +3,10 @@ FROM node:18
 WORKDIR /app
 
 COPY package*.json ./
+# Install sharp for linux platform
+RUN npm install --platform=linux --arch=x64 sharp
 RUN npm install
 RUN npm install --save-dev @types/uuid
-# Install dependencies including sharp
-RUN npm install --legacy-peer-deps sharp
 
 COPY . .
 RUN npm run build
