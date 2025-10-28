@@ -1,45 +1,61 @@
-FROM kalilinux/kali-rolling
+FROM python:3.9-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install system packages including steganography tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 \
-        python3-pip \
-        python3-venv \
-        python3-pil \
-        awscli \
-        binwalk \
-        foremost \
-        steghide \
-        outguess \
-        exiftool \
-        pngcheck \
+        build-essential \
         ruby \
         ruby-dev \
         default-jdk \
         git \
         wget \
         binutils \
-        coreutils \
-        util-linux
+        zlib1g-dev \
+        libpng-dev \
+        libjpeg-dev \
+        libwebp-dev \
+        libfreetype6-dev \
+        liblcms2-dev \
+        libopenjp2-7-dev \
+        libtiff5-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        libxcb1-dev \
+        exiftool \
+        pngcheck && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN gem install zsteg
+# Install steganography tools
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        steghide \
+        binwalk && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install zsteg gem with specific version to avoid compatibility issues
+RUN gem install zsteg -v 0.2.12
+
+# Install Python dependencies
+RUN pip install --no-cache-dir flask pillow pymongo dnspython
+
+# Create app directory
+WORKDIR /app
+
+# Copy application files
+COPY . .
 
 # Download stegsolve.jar with fallback options
 RUN wget -O /usr/local/bin/stegsolve.jar https://github.com/Giotino/stegsolve/releases/download/v1.0/stegsolve.jar || \
     wget -O /usr/local/bin/stegsolve.jar https://raw.githubusercontent.com/b3nj5m1n/StegSolve/master/StegSolve.jar || \
     echo "Could not download stegsolve.jar, continuing without it"
 
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN /opt/venv/bin/python -m ensurepip --upgrade
-RUN /opt/venv/bin/pip install --no-cache-dir flask pillow pymongo dnspython
-
-WORKDIR /app
-
-COPY . .
+# Set proper permissions for stegsolve.jar
+RUN chmod +x /usr/local/bin/stegsolve.jar || echo "Could not set permissions for stegsolve.jar"
 
 EXPOSE 5000
 
-CMD ["python3", "app.py"]
+CMD ["python", "app.py"]

@@ -5,9 +5,13 @@ import subprocess
 import base64
 from PIL import Image
 import io
-import urllib.parse
+import shutil
 
 app = Flask(__name__)
+
+def is_tool_installed(tool_name):
+    """Check if a tool is installed and available in PATH"""
+    return shutil.which(tool_name) is not None
 
 def run_command(cmd):
     try:
@@ -28,6 +32,34 @@ def run_command(cmd):
         error_msg = f"Error executing command: {str(e)}"
         return error_msg
 
+def run_zsteg_command(image_path):
+    """Run zsteg with proper error handling"""
+    try:
+        # Use a more robust approach to run zsteg
+        cmd = f"zsteg '{image_path}' 2>&1"
+        result = subprocess.run(cmd, shell=True, capture_output=True, timeout=60, text=True)
+        
+        # Combine stdout and stderr
+        output = result.stdout + result.stderr
+        
+        # Check if the command failed
+        if result.returncode != 0:
+            # Handle specific zsteg errors
+            if "No such file or directory" in output:
+                return "Zsteg failed: File not found or inaccessible"
+            elif "undefined method" in output:
+                return "Zsteg failed due to internal error. This may be a version compatibility issue."
+            else:
+                return f"Zsteg failed with return code {result.returncode}: {output}"
+        
+        # Return successful output
+        return output if output.strip() else "Zsteg completed successfully but found no hidden data"
+        
+    except subprocess.TimeoutExpired:
+        return "Zsteg command timed out after 60 seconds"
+    except Exception as e:
+        return f"Error running zsteg: {str(e)}"
+
 def analyze_stegsolve(image_path):
     results = []
     try:
@@ -39,11 +71,9 @@ def analyze_stegsolve(image_path):
             "Red plane 0",
             "Green plane 0",
             "Blue plane 0",
-            "Alpha plane 0",
             "LSB of Red plane",
             "LSB of Green plane",
-            "LSB of Blue plane",
-            "LSB of Alpha plane"
+            "LSB of Blue plane"
         ]
         for mode in modes:
             cmd = f"java -jar /usr/local/bin/stegsolve.jar -s '{mode}' -o /tmp/stegsolve_out.png '{image_path}'"
@@ -81,9 +111,20 @@ def process():
         return jsonify({'error': f'Cannot decode file data: {str(e)}'}), 400
     
     # Save file data to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+    tmp_file = None
+    local_path = None
+    try:
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
         tmp_file.write(file_bytes)
+        tmp_file.flush()  # Ensure data is written
         local_path = tmp_file.name
+    except Exception as e:
+        if tmp_file:
+            tmp_file.close()
+        return jsonify({'error': f'Cannot create temporary file: {str(e)}'}), 400
+    finally:
+        if tmp_file:
+            tmp_file.close()
     
     # Ensure file is properly written
     try:
@@ -92,23 +133,39 @@ def process():
             os.unlink(local_path)  # Clean up
             return jsonify({'error': 'Temporary file is empty'}), 400
     except Exception as e:
-        os.unlink(local_path)  # Clean up
+        if local_path and os.path.exists(local_path):
+            os.unlink(local_path)  # Clean up
         return jsonify({'error': f'Cannot access temporary file: {str(e)}'}), 400
     
     try:
         # Create a temporary directory for output files
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Define tools with proper checks
             tools = {
-                "cat": f"cat '{local_path}'",  # Show full output, handle in run_command
+                "cat": f"cat '{local_path}'",
                 "strings": f"strings -n 4 '{local_path}' || echo 'Strings command failed or no output'",
-                "binwalk": f"binwalk '{local_path}'",
-                "foremost": f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out' 2>/dev/null || echo 'Foremost failed or no output'",
-                "zsteg": f"zsteg '{local_path}' 2>&1 || echo 'Zsteg failed or no output'",
-                "steghide": f"steghide info '{local_path}' -p '' 2>&1 || echo 'Steghide failed or no hidden data'",
-                "outguess": f"outguess -r '{local_path}' '{tmpdir}/outguess_out' 2>/dev/null && cat '{tmpdir}/outguess_out' 2>/dev/null || echo 'Outguess failed or no hidden data'",
-                "exiftool": f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'",
-                "pngcheck": f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
+                "binwalk": f"binwalk '{local_path}'"
             }
+            
+            # Add conditional tools based on availability
+            if is_tool_installed("foremost"):
+                tools["foremost"] = f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out' 2>/dev/null || echo 'Foremost failed or no output'"
+            else:
+                tools["foremost"] = "echo 'Foremost not installed'"
+                
+            if is_tool_installed("zsteg"):
+                # Use our custom function for better error handling
+                tools["zsteg"] = run_zsteg_command(local_path)
+            else:
+                tools["zsteg"] = "echo 'Zsteg not installed'"
+                
+            if is_tool_installed("steghide"):
+                tools["steghide"] = f"steghide info '{local_path}' -p '' 2>&1 || echo 'Steghide failed or no hidden data'"
+            else:
+                tools["steghide"] = "echo 'Steghide not installed'"
+                
+            tools["exiftool"] = f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'"
+            tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
             
             results = {}
             for tool, cmd in tools.items():
@@ -119,11 +176,11 @@ def process():
             return jsonify(results)
     finally:
         # Clean up the temporary file
-        if 'local_path' in locals() and os.path.exists(local_path):
+        if local_path and os.path.exists(local_path):
             try:
                 os.unlink(local_path)
             except Exception:
                 pass
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=False)

@@ -9,11 +9,24 @@ services:
       - "5000:5000"
     volumes:
       - ./processor:/app:cached
+    networks:
+      - app-network
+    # Add memory and CPU limits to prevent resource exhaustion
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
     environment:
       - NEXT_PUBLIC_PROCESSOR_URL=http://processor:5000
       - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
@@ -26,3 +39,19 @@ services:
       - /app/.next
     depends_on:
       - processor
+    networks:
+      - app-network
+    # Add memory limits to prevent resource exhaustion
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+# Define a custom network for better communication
+networks:
+  app-network:
+    driver: bridge

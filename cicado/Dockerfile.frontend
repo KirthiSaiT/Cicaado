@@ -1,16 +1,32 @@
-FROM node:18
+FROM node:18-alpine
+
+# Define build arguments
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+# Set environment variables
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
 # Install sharp for linux platform
 RUN npm install --platform=linux --arch=x64 sharp
-RUN npm install
-RUN npm install --save-dev @types/uuid
 
+# Copy application files
 COPY . .
+
+# Build the Next.js application
 RUN npm run build
+
+# Clean up development dependencies
+RUN npm prune --production
 
 EXPOSE 3000
 
+# Start the application
 CMD ["npm", "start"]
