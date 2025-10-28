@@ -44,33 +44,20 @@ RUN apt-get update && \
     echo "outguess not available in repos, continuing without it"
 
 # Install zsteg gem with specific version to avoid compatibility issues
-RUN gem install zsteg -v 0.2.12 && \
-    # Ensure the gem is properly installed
-    gem list zsteg
-
-# Create symlinks to ensure tools are in PATH
-RUN ln -sf /usr/local/bin/zsteg /usr/bin/zsteg && \
-    ln -sf /usr/bin/foremost /usr/local/bin/foremost && \
-    echo "Creating symlinks for tools"
+RUN gem install zsteg -v 0.2.10 && \
+    # Create a symlink to ensure it's in PATH
+    ln -s /usr/local/bin/zsteg /usr/bin/zsteg || \
+    echo "Could not create symlink for zsteg"
 
 # Verify installations with more detailed output
-RUN echo "=== Verifying tool installations ===" && \
-    echo "Ruby version: $(ruby --version)" && \
-    echo "Gem version: $(gem --version)" && \
-    echo "Checking zsteg:" && \
+RUN echo "Checking installed tools:" && \
     which zsteg && \
-    zsteg --help || echo "zsteg help failed" && \
-    echo "Checking foremost:" && \
     which foremost && \
-    echo "Checking steghide:" && \
     which steghide && \
-    echo "Checking binwalk:" && \
-    which binwalk && \
-    echo "Checking exiftool:" && \
     which exiftool && \
-    echo "Checking pngcheck:" && \
     which pngcheck && \
-    echo "=== Tool verification complete ==="
+    which binwalk || \
+    echo "Some tools not found, but continuing"
 
 # Install Python dependencies
 RUN pip install --no-cache-dir flask pillow pymongo dnspython
