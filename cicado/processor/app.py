@@ -59,15 +59,36 @@ def run_zsteg_command(image_path):
         # Combine stdout and stderr
         output = result.stdout + result.stderr
 
+        # Even if zsteg has internal errors, if it produced analysis results, return them
+        if output.strip():
+            # Look for actual steganography findings
+            if "bytes of extra data" in output:
+                # Extract the important analysis information
+                lines = output.split('\n')
+                analysis_lines = []
+                for line in lines:
+                    # Keep lines with analysis findings
+                    if "bytes of extra data" in line or line.startswith("b") or "[?]" in line:
+                        analysis_lines.append(line)
+                    # Skip Ruby error lines
+                    elif "NoMethodError" in line or "undefined method" in line or "spawn" in line:
+                        continue
+                if analysis_lines:
+                    return "\n".join(analysis_lines)
+            
+            # If we have output but no specific findings, filter out Ruby errors
+            lines = output.split('\n')
+            filtered_lines = [line for line in lines if 'NoMethodError' not in line and 'undefined method' not in line and 'spawn' not in line]
+            filtered_output = '\n'.join(filtered_lines).strip()
+            if filtered_output:
+                return filtered_output
+
         # Handle specific zsteg errors
         if "rb_sysopen" in output:
             return "zsteg internal error (Ruby couldn't open the image file) — likely deleted or inaccessible."
 
         if "not found" in output.lower():
             return "zsteg tool not found or not in PATH."
-
-        if "error" in output.lower() and not output.strip().startswith("b'"):
-            return f"zsteg error: {output.strip()}"
 
         # Return successful output
         return output.strip() or "No hidden data found."
