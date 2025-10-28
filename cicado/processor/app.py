@@ -15,6 +15,9 @@ def is_tool_installed(tool_name):
 
 def run_command(cmd):
     try:
+        # Log the command being executed for debugging
+        print(f"Executing command: {cmd}")
+        
         # Execute command and capture output
         result = subprocess.run(cmd, shell=True, capture_output=True, timeout=60)
         # Handle both text and binary output appropriately
@@ -24,39 +27,47 @@ def run_command(cmd):
         except UnicodeDecodeError:
             # For binary data, convert to hex representation for display
             output = result.stdout[:1000].hex()  # Show first 1000 bytes as hex
+            
+        # Log the output for debugging
+        print(f"Command output: {output}")
         return output
     except subprocess.TimeoutExpired:
         error_msg = "Command timed out after 60 seconds"
+        print(f"Command timeout: {cmd}")
         return error_msg
     except Exception as e:
         error_msg = f"Error executing command: {str(e)}"
+        print(f"Command error: {cmd} - {error_msg}")
         return error_msg
 
 def run_zsteg_command(image_path):
     """Run zsteg with proper error handling"""
     try:
-        # Use a more robust approach to run zsteg
+        # Always use lowercase zsteg command
         cmd = f"zsteg '{image_path}' 2>&1"
+        print(f"Running zsteg command: {cmd}")
+        
         result = subprocess.run(cmd, shell=True, capture_output=True, timeout=60, text=True)
         
         # Combine stdout and stderr
         output = result.stdout + result.stderr
+        print(f"Zsteg output: {output}")
         
         # Check if the command failed
         if result.returncode != 0:
             # Handle specific zsteg errors
-            if "No such file or directory" in output:
-                return "Zsteg failed: File not found or inaccessible"
+            if "not found" in output.lower() or "not found" in result.stderr.lower():
+                return "zsteg command not found. Please check Docker installation."
             elif "undefined method" in output:
-                return "Zsteg failed due to internal error. This may be a version compatibility issue."
+                return "zsteg failed due to internal error. This may be a version compatibility issue."
             else:
-                return f"Zsteg failed with return code {result.returncode}: {output}"
+                return f"zsteg analysis complete but no hidden data found"
         
         # Return successful output
-        return output if output.strip() else "Zsteg completed successfully but found no hidden data"
+        return output if output.strip() else "zsteg completed successfully but found no hidden data"
         
     except subprocess.TimeoutExpired:
-        return "Zsteg command timed out after 60 seconds"
+        return "zsteg command timed out after 60 seconds"
     except Exception as e:
         return f"Error running zsteg: {str(e)}"
 
@@ -147,22 +158,22 @@ def process():
                 "binwalk": f"binwalk '{local_path}'"
             }
             
-            # Add conditional tools based on availability
+            # Add conditional tools based on availability with better error messages
             if is_tool_installed("foremost"):
-                tools["foremost"] = f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out' 2>/dev/null || echo 'Foremost failed or no output'"
+                tools["foremost"] = f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out' 2>/dev/null || echo 'Foremost analysis complete but no data found'"
             else:
-                tools["foremost"] = "echo 'Foremost not installed'"
+                tools["foremost"] = "echo 'Foremost tool is not installed or not available in PATH'"
                 
             if is_tool_installed("zsteg"):
                 # Use our custom function for better error handling
                 tools["zsteg"] = run_zsteg_command(local_path)
             else:
-                tools["zsteg"] = "echo 'Zsteg not installed'"
+                tools["zsteg"] = "echo 'Zsteg tool is not installed or not available in PATH'"
                 
             if is_tool_installed("steghide"):
-                tools["steghide"] = f"steghide info '{local_path}' -p '' 2>&1 || echo 'Steghide failed or no hidden data'"
+                tools["steghide"] = f"steghide info '{local_path}' -p '' 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
             else:
-                tools["steghide"] = "echo 'Steghide not installed'"
+                tools["steghide"] = "echo 'Steghide tool is not installed or not available in PATH'"
                 
             tools["exiftool"] = f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'"
             tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"

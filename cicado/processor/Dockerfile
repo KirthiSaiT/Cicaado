@@ -24,7 +24,8 @@ RUN apt-get update && \
         libfribidi-dev \
         libxcb1-dev \
         exiftool \
-        pngcheck && \
+        pngcheck \
+        foremost && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -36,8 +37,40 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install additional tools that might not be in the main repos
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        outguess || \
+    echo "outguess not available in repos, continuing without it"
+
 # Install zsteg gem with specific version to avoid compatibility issues
-RUN gem install zsteg -v 0.2.12
+RUN gem install zsteg -v 0.2.12 && \
+    # Ensure the gem is properly installed
+    gem list zsteg
+
+# Create symlinks to ensure tools are in PATH
+RUN ln -sf /usr/local/bin/zsteg /usr/bin/zsteg && \
+    ln -sf /usr/bin/foremost /usr/local/bin/foremost && \
+    echo "Creating symlinks for tools"
+
+# Verify installations with more detailed output
+RUN echo "=== Verifying tool installations ===" && \
+    echo "Ruby version: $(ruby --version)" && \
+    echo "Gem version: $(gem --version)" && \
+    echo "Checking zsteg:" && \
+    which zsteg && \
+    zsteg --help || echo "zsteg help failed" && \
+    echo "Checking foremost:" && \
+    which foremost && \
+    echo "Checking steghide:" && \
+    which steghide && \
+    echo "Checking binwalk:" && \
+    which binwalk && \
+    echo "Checking exiftool:" && \
+    which exiftool && \
+    echo "Checking pngcheck:" && \
+    which pngcheck && \
+    echo "=== Tool verification complete ==="
 
 # Install Python dependencies
 RUN pip install --no-cache-dir flask pillow pymongo dnspython
