@@ -127,11 +127,21 @@ def process():
     except Exception as e:
         return jsonify({'error': f'Cannot decode file data: {str(e)}'}), 400
     
-    # Save file data to a temporary file
+    # Save file data to a temporary file with proper extension
     tmp_file = None
     local_path = None
     try:
-        tmp_file = tempfile.NamedTemporaryFile(delete=False)
+        # Extract file extension from the original file name
+        file_extension = ''
+        if file_name:
+            file_extension = os.path.splitext(file_name)[1]
+        
+        # If no extension or invalid extension, default to .png
+        if not file_extension or file_extension.lower() not in ['.png', '.bmp', '.jpg', '.jpeg', '.gif']:
+            file_extension = '.png'
+        
+        # Create temporary file with proper extension
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
         tmp_file.write(file_bytes)
         tmp_file.flush()  # Ensure data is written
         local_path = tmp_file.name
