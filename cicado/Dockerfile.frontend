@@ -6,6 +6,9 @@ ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 # Set environment variables
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 
+# Increase Node.js memory limit for build process
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 WORKDIR /app
 
 # Copy package files

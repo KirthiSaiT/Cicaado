@@ -26,6 +26,7 @@ RUN apt-get update && \
         pngcheck \
         foremost \
         steghide \
+        stegseek \
         binwalk && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -46,6 +47,12 @@ RUN pip install --no-cache-dir flask pillow pymongo dnspython
 
 # Create app directory
 WORKDIR /app
+
+# Create wordlists directory
+RUN mkdir -p /processor/wordlists
+
+# Copy local wordlists directory (including rockyou.txt) into the container
+COPY ./wordlists /processor/wordlists
 
 # Copy application files
 COPY . .

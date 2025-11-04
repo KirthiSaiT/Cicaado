@@ -40,7 +40,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const file = files[0];
-    const fileName = file.filename;
+    // Use the original filename from metadata to preserve file extension
+    const fileName = file.metadata?.originalName || file.filename;
+    const contentType = file.contentType || 'application/octet-stream';
     
     // Read file data directly into memory instead of writing to disk
     console.log(`Reading file from MongoDB GridFS: ${fileName}`);
@@ -78,7 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Convert file buffer to base64 for transmission
     const fileDataBase64 = fileBuffer.toString('base64');
     
-    // Send the file data and original filename to the processor
+    // Send the file data, original filename, and content type to the processor
     const response = await fetch(`${processorUrl}/process`, {
       method: 'POST',
       headers: {
@@ -87,6 +89,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       body: JSON.stringify({ 
         fileData: fileDataBase64,
         fileName: fileName,
+        contentType: contentType,
         originalFileId: key
       }),
     });
