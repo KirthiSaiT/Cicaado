@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:18-slim
 
 # Define build arguments
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -14,11 +14,10 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (including devDependencies like TypeScript for the build)
+RUN npm ci
 
-# Install sharp for linux platform
-RUN npm install --platform=linux --arch=x64 sharp
+# (Sharp installs correctly automatically on Debian-based images)
 
 # Copy application files
 COPY . .

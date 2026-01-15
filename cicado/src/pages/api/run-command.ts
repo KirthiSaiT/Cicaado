@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Check if file exists
     const files = await bucket.find({ _id: new ObjectId(key) }).toArray();
-    
+
     if (files.length === 0) {
       return res.status(404).json({ error: 'File not found in MongoDB' });
     }
@@ -43,40 +43,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Use the original filename from metadata to preserve file extension
     const fileName = file.metadata?.originalName || file.filename;
     const contentType = file.contentType || 'application/octet-stream';
-    
+
     // Read file data directly into memory with better error handling
     console.log(`Reading file from MongoDB GridFS: ${fileName}`);
-    
+
     // Stream file from GridFS to buffer
     const chunks: Buffer[] = [];
     const downloadStream = bucket.openDownloadStream(new ObjectId(key));
-    
+
     // Collect all data chunks
     downloadStream.on('data', (chunk) => {
       chunks.push(chunk);
     });
-    
+
     // Wait for the download to complete
     const fileBuffer = await new Promise<Buffer>((resolve, reject) => {
       downloadStream.on('error', (error) => {
         console.error(`Error downloading file from GridFS: ${error}`);
         reject(new Error(`Failed to download file from MongoDB: ${error.message}`));
       });
-      
+
       downloadStream.on('end', () => {
         const fullBuffer = Buffer.concat(chunks);
         console.log(`File successfully read from MongoDB. Size: ${fullBuffer.length} bytes`);
         resolve(fullBuffer);
       });
     });
-    
+
     // Verify we have file data
     if (fileBuffer.length === 0) {
       return res.status(500).json({ error: 'Downloaded file is empty.' });
     }
-    
+
     console.log(`File read successfully from MongoDB. Size: ${fileBuffer.length} bytes`);
-    
+
     // Additional validation: check if the file size matches what's stored in metadata
     const expectedSize = file.metadata?.size;
     if (expectedSize && fileBuffer.length !== expectedSize) {
@@ -85,7 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Convert file buffer to base64 for transmission
     const fileDataBase64 = fileBuffer.toString('base64');
-    
+
     // Validate base64 encoding
     try {
       const decodedBuffer = Buffer.from(fileDataBase64, 'base64');
@@ -96,20 +96,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.error('Base64 encoding validation error:', decodeError);
       return res.status(500).json({ error: 'Failed to validate file encoding.' });
     }
-    
+
     // Send the file data, original filename, and content type to the processor
-    const response = await fetch(`${processorUrl}/process`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        fileData: fileDataBase64,
-        fileName: fileName,
-        contentType: contentType,
-        originalFileId: key
-      }),
-    });
+    // Increase timeout to 10 minutes (600000 ms) for long-running tools like stegseek
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000);
+
+    let response;
+    try {
+      response = await fetch(`${processorUrl}/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileData: fileDataBase64,
+          fileName: fileName,
+          contentType: contentType,
+          originalFileId: key
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorData = await response.json();

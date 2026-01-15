@@ -151,8 +151,8 @@ def crack_steghide_password_with_stegseek(image_path, wordlist_path="/processor/
             # Continue anyway as the steganalysis tools might still work
         
         # Run StegSeek with the wordlist
-        # StegSeek command: stegseek <image_file> <wordlist> [<output_file>]
-        cmd = f"stegseek '{image_path}' '{wordlist_path}' '{extracted_file_path}'"
+        # StegSeek command: stegseek -q <image_file> <wordlist> [<output_file>]
+        cmd = f"stegseek -q '{image_path}' '{wordlist_path}' '{extracted_file_path}'"
         print(f"[DEBUG] Running StegSeek command: {cmd}")
         
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)  # 5 minute timeout
@@ -557,17 +557,22 @@ def process():
             
             results = {}
             for tool, cmd in tools.items():
+                print(f"[DEBUG] Running tool: {tool}")
                 results[tool] = run_command(cmd)
-                
+                print(f"[DEBUG] Finished tool: {tool}")
+
             # Run zsteg separately to ensure file is still available
             if is_tool_installed("zsteg"):
+                print("[DEBUG] Running additional tool: zsteg")
                 results["zsteg"] = run_zsteg_command(local_path)
             else:
                 results["zsteg"] = "zsteg tool is not installed or not available in PATH"
                 
             # Add steghide password cracking for supported file types
             if is_tool_installed("steghide") and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
+                print("[DEBUG] Starting StegSeek password cracking (this may take time)...")
                 results["steghide_crack"] = crack_steghide_password(local_path)
+                print("[DEBUG] Finished StegSeek password cracking")
             else:
                 results["steghide_crack"] = "Steghide password cracking not available for this file type or steghide not installed"
                 
