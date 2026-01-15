@@ -11,6 +11,10 @@ services:
       - ./processor:/app:cached
     networks:
       - app-network
+    # Fix for MongoDB DNS resolution issues
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     # Add memory and CPU limits to prevent resource exhaustion
     deploy:
       resources:
@@ -41,6 +45,10 @@ services:
       - processor
     networks:
       - app-network
+    # Fix for MongoDB DNS resolution issues
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     # Add memory limits to prevent resource exhaustion
     deploy:
       resources:

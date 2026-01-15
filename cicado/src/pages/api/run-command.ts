@@ -44,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fileName = file.metadata?.originalName || file.filename;
     const contentType = file.contentType || 'application/octet-stream';
     
-    // Read file data directly into memory instead of writing to disk
+    // Read file data directly into memory with better error handling
     console.log(`Reading file from MongoDB GridFS: ${fileName}`);
     
     // Stream file from GridFS to buffer
@@ -76,9 +76,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     console.log(`File read successfully from MongoDB. Size: ${fileBuffer.length} bytes`);
+    
+    // Additional validation: check if the file size matches what's stored in metadata
+    const expectedSize = file.metadata?.size;
+    if (expectedSize && fileBuffer.length !== expectedSize) {
+      console.warn(`File size mismatch. Expected: ${expectedSize}, Actual: ${fileBuffer.length}`);
+    }
 
     // Convert file buffer to base64 for transmission
     const fileDataBase64 = fileBuffer.toString('base64');
+    
+    // Validate base64 encoding
+    try {
+      const decodedBuffer = Buffer.from(fileDataBase64, 'base64');
+      if (decodedBuffer.length !== fileBuffer.length) {
+        console.warn(`Base64 encoding validation failed. Original: ${fileBuffer.length}, Decoded: ${decodedBuffer.length}`);
+      }
+    } catch (decodeError) {
+      console.error('Base64 encoding validation error:', decodeError);
+      return res.status(500).json({ error: 'Failed to validate file encoding.' });
+    }
     
     // Send the file data, original filename, and content type to the processor
     const response = await fetch(`${processorUrl}/process`, {

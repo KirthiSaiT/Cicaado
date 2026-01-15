@@ -60,29 +60,13 @@ def run_zsteg_command(image_path):
         # Combine stdout and stderr
         output = result.stdout + result.stderr
 
-        # Even if zsteg has internal errors, if it produced analysis results, return them
+        # Return the full output without filtering to match Kali Linux behavior
         if output.strip():
-            # Look for actual steganography findings
-            if "bytes of extra data" in output:
-                # Extract the important analysis information
-                lines = output.split('\n')
-                analysis_lines = []
-                for line in lines:
-                    # Keep lines with analysis findings
-                    if "bytes of extra data" in line or line.startswith("b") or "[?]" in line:
-                        analysis_lines.append(line)
-                    # Skip Ruby error lines
-                    elif "NoMethodError" in line or "undefined method" in line or "spawn" in line:
-                        continue
-                if analysis_lines:
-                    return "\n".join(analysis_lines)
-            
-            # If we have output but no specific findings, filter out Ruby errors
+            # Filter out only critical Ruby errors that prevent analysis
             lines = output.split('\n')
             filtered_lines = [line for line in lines if 'NoMethodError' not in line and 'undefined method' not in line and 'spawn' not in line]
             filtered_output = '\n'.join(filtered_lines).strip()
-            if filtered_output:
-                return filtered_output
+            return filtered_output
 
         # Handle specific zsteg errors
         if "rb_sysopen" in output:
@@ -452,13 +436,19 @@ def process():
     if not file_data:
         return jsonify({'error': 'Missing file data'}), 400
     
-    # Decode base64 file data
+    # Decode base64 file data with better error handling
     try:
         file_bytes = base64.b64decode(file_data)
         if len(file_bytes) == 0:
             return jsonify({'error': 'File data is empty'}), 400
+        print(f"Decoded file data. Size: {len(file_bytes)} bytes")
     except Exception as e:
         return jsonify({'error': f'Cannot decode file data: {str(e)}'}), 400
+    
+    # Validate that the decoded data matches expected size if provided
+    expected_size = data.get('fileSize') if data else None
+    if expected_size and len(file_bytes) != expected_size:
+        print(f"Warning: File size mismatch. Expected: {expected_size}, Actual: {len(file_bytes)}")
     
     # Save file data to a temporary file with proper extension
     tmp_file = None
@@ -503,6 +493,11 @@ def process():
         print(f"Original filename: {file_name}")
         print(f"File extension used: {normalized_extension}")
         print(f"File size: {len(file_bytes)} bytes")
+        
+        # Verify file was written correctly
+        written_size = os.path.getsize(local_path)
+        if written_size != len(file_bytes):
+            print(f"Warning: File write verification failed. Expected: {len(file_bytes)}, Written: {written_size}")
     except Exception as e:
         if tmp_file:
             tmp_file.close()
@@ -518,6 +513,15 @@ def process():
         if file_size == 0:
             os.unlink(local_path)  # Clean up
             return jsonify({'error': 'Temporary file is empty'}), 400
+            
+        # Additional verification: try to open as image if it's supposed to be one
+        if content_type and content_type.startswith('image/'):
+            try:
+                img = Image.open(local_path)
+                print(f"Image verification successful. Dimensions: {img.size}, Mode: {img.mode}")
+                img.close()
+            except Exception as img_error:
+                print(f"Warning: Image verification failed: {img_error}")
     except Exception as e:
         if local_path and os.path.exists(local_path):
             os.unlink(local_path)  # Clean up
@@ -545,19 +549,8 @@ def process():
             else:
                 tools["zsteg"] = "echo 'Zsteg tool is not installed or not available in PATH'"
                 
-            if is_tool_installed("steghide"):
-                # Use specific steghide command based on file extension
-                if local_path.lower().endswith(('.jpg', '.jpeg')):
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' -sf JPEG 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-                elif local_path.lower().endswith('.bmp'):
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' -sf BMP 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-                elif local_path.lower().endswith('.wav'):
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' -sf WAVE 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-                else:
-                    # Default to auto-detection
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-            else:
-                tools["steghide"] = "echo 'Steghide tool is not installed or not available in PATH'"
+            # Steghide info check removed as per user request
+            # if is_tool_installed("steghide"): ...
                 
             tools["exiftool"] = f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'"
             tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"

@@ -10,6 +10,7 @@ RUN apt-get update && \
         default-jdk \
         git \
         wget \
+        file \
         binutils \
         zlib1g-dev \
         libpng-dev \

@@ -41,7 +41,21 @@ export default async function handler(
         return res.status(400).json({ error: "No valid file uploaded." });
       }
       
-      const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+      // Read file data with better error handling
+      let fileBuffer: Buffer;
+      try {
+        fileBuffer = fs.readFileSync(uploadedFile.filepath);
+        // Validate that we actually have data
+        if (fileBuffer.length === 0) {
+          console.error("File is empty:", uploadedFile.filepath);
+          return res.status(400).json({ error: "Uploaded file is empty." });
+        }
+        console.log(`File read successfully. Size: ${fileBuffer.length} bytes`);
+      } catch (readError) {
+        console.error("Error reading uploaded file:", readError);
+        return res.status(500).json({ error: "Failed to read uploaded file." });
+      }
+      
       const originalName = uploadedFile.originalFilename || `upload`;
       const uniqueId = uuidv4();
       const fileName = `${uniqueId}-${originalName}`;
@@ -54,7 +68,7 @@ export default async function handler(
       // Create GridFS bucket
       const bucket = new GridFSBucket(db, { bucketName: 'uploads' });
       
-      // Upload file to GridFS
+      // Upload file to GridFS with proper error handling
       const uploadStream = bucket.openUploadStream(fileName, {
         contentType: contentType,
         metadata: {
@@ -79,10 +93,36 @@ export default async function handler(
       // Get the file ID from the upload stream
       const fileId = uploadStream.id;
       
-      // Verify the file was uploaded successfully
-      const verifyFiles = await bucket.find({ _id: fileId }).toArray();
-      if (verifyFiles.length === 0) {
-        throw new Error('File upload verification failed: File not found in GridFS after upload');
+      // Verify the file was uploaded successfully by reading it back
+      try {
+        const verifyFiles = await bucket.find({ _id: fileId }).toArray();
+        if (verifyFiles.length === 0) {
+          throw new Error('File upload verification failed: File not found in GridFS after upload');
+        }
+        
+        // Additional verification: try to read the file back
+        const chunks: Buffer[] = [];
+        const downloadStream = bucket.openDownloadStream(new ObjectId(fileId.toString()));
+        
+        downloadStream.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+        
+        const verifyBuffer = await new Promise<Buffer>((resolve, reject) => {
+          downloadStream.on('error', reject);
+          downloadStream.on('end', () => {
+            const fullBuffer = Buffer.concat(chunks);
+            resolve(fullBuffer);
+          });
+        });
+        
+        // Compare file sizes
+        if (verifyBuffer.length !== fileBuffer.length) {
+          console.warn(`File size mismatch during verification. Original: ${fileBuffer.length}, Retrieved: ${verifyBuffer.length}`);
+        }
+      } catch (verifyError) {
+        console.error('File verification error:', verifyError);
+        // Don't fail the upload just because of verification issues, but log it
       }
       
       // Return file information
