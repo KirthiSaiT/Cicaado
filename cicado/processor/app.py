@@ -424,6 +424,10 @@ def get_file_extension_from_mime(content_type, original_filename):
     # Default to .bin if we can't determine
     return '.bin'
 
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy", "service": "cicaado-processor"}), 200
+
 @app.route('/process', methods=['POST'])
 def process():
     data = request.json
