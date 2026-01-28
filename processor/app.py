@@ -6,6 +6,7 @@ import base64
 from PIL import Image
 import io
 import shutil
+import mimetypes
 
 app = Flask(__name__)
 
@@ -59,36 +60,20 @@ def run_zsteg_command(image_path):
         # Combine stdout and stderr
         output = result.stdout + result.stderr
 
-        # Even if zsteg has internal errors, if it produced analysis results, return them
+        # Return the full output without filtering to match Kali Linux behavior
         if output.strip():
-            # Look for actual steganography findings
-            if "bytes of extra data" in output:
-                # Extract the important analysis information
-                lines = output.split('\n')
-                analysis_lines = []
-                for line in lines:
-                    # Keep lines with analysis findings
-                    if "bytes of extra data" in line or line.startswith("b") or "[?]" in line:
-                        analysis_lines.append(line)
-                    # Skip Ruby error lines
-                    elif "NoMethodError" in line or "undefined method" in line or "spawn" in line:
-                        continue
-                if analysis_lines:
-                    return "\n".join(analysis_lines)
-            
-            # If we have output but no specific findings, filter out Ruby errors
+            # Filter out only critical Ruby errors that prevent analysis
             lines = output.split('\n')
             filtered_lines = [line for line in lines if 'NoMethodError' not in line and 'undefined method' not in line and 'spawn' not in line]
             filtered_output = '\n'.join(filtered_lines).strip()
-            if filtered_output:
-                return filtered_output
+            return filtered_output
 
         # Handle specific zsteg errors
         if "rb_sysopen" in output:
             return "zsteg internal error (Ruby couldn't open the image file) — likely deleted or inaccessible."
 
         if "not found" in output.lower():
-            return "zsteg tool not found or not in PATH."
+            return "zsteg tool not found or not available in PATH."
 
         # Return successful output
         return output.strip() or "No hidden data found."
@@ -129,8 +114,163 @@ def analyze_stegsolve(image_path):
         results.append(error_msg)
     return results
 
+def crack_steghide_password_with_stegseek(image_path, wordlist_path="/processor/wordlists/rockyou.txt"):
+    """Attempt to crack steghide password using StegSeek with a wordlist."""
+    if not is_tool_installed("stegseek"):
+        return "StegSeek tool is not installed or not available in PATH"
+    
+    # Check if file supports steghide (JPEG or BMP)
+    if not image_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
+        return "Steghide only works with JPEG and BMP files"
+    
+    # Check if wordlist exists
+    if not os.path.exists(wordlist_path):
+        return f"Wordlist not found: {wordlist_path}"
+    
+    try:
+        # Create a unique output file path for extracted data
+        import uuid
+        unique_id = str(uuid.uuid4())[:8]
+        extracted_file_path = f"/tmp/stegseek_output_{unique_id}.txt"
+        
+        # Debug: Check file properties
+        print(f"[DEBUG] Image file path: {image_path}")
+        print(f"[DEBUG] Image file size: {os.path.getsize(image_path)} bytes")
+        print(f"[DEBUG] Image file extension: {os.path.splitext(image_path)[1]}")
+        
+        # Debug: Verify this is a valid image file
+        try:
+            from PIL import Image
+            img = Image.open(image_path)
+            print(f"[DEBUG] Image dimensions: {img.size}")
+            print(f"[DEBUG] Image mode: {img.mode}")
+            img.close()
+            print(f"[DEBUG] File verified as valid image")
+        except Exception as e:
+            print(f"[DEBUG] Warning: Image validation failed: {e}")
+            # Continue anyway as the steganalysis tools might still work
+        
+        # Run StegSeek with the wordlist
+        # StegSeek command: stegseek -q <image_file> <wordlist> [<output_file>]
+        cmd = f"stegseek -q '{image_path}' '{wordlist_path}' '{extracted_file_path}'"
+        print(f"[DEBUG] Running StegSeek command: {cmd}")
+        
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)  # 5 minute timeout
+        output = result.stdout + result.stderr
+        print(f"[DEBUG] StegSeek output: {output}")
+        print(f"[DEBUG] StegSeek return code: {result.returncode}")
+        
+        # Debug: Check if output file was created
+        if os.path.exists(extracted_file_path):
+            print(f"[DEBUG] Extracted file created, size: {os.path.getsize(extracted_file_path)} bytes")
+        else:
+            print(f"[DEBUG] No extracted file was created")
+        
+        # Check if StegSeek found the password
+        # StegSeek returns 0 on success, 1 on failure to find password, 2 on error
+        if result.returncode == 0:
+            # Success! Password found
+            # Try to extract the password from the output
+            lines = output.split('\n')
+            password = None
+            
+            # Look for the password in the output
+            # StegSeek typically outputs the password to stdout
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and status messages
+                if not line or line.startswith("StegSeek") or line.startswith("Progress") or "trying" in line.lower():
+                    continue
+                    
+                # If we have a line that's not a status message, it's likely the password
+                if line and not password:
+                    password = line
+                    break
+            
+            # Try to read the extracted data
+            extracted_data = ""
+            if os.path.exists(extracted_file_path):
+                try:
+                    with open(extracted_file_path, 'rb') as f:
+                        # Read as binary and try to decode as text
+                        raw_data = f.read()
+                        try:
+                            extracted_data = raw_data.decode('utf-8')
+                        except UnicodeDecodeError:
+                            # If UTF-8 fails, try latin-1 or show as hex
+                            try:
+                                extracted_data = raw_data.decode('latin-1')
+                            except UnicodeDecodeError:
+                                extracted_data = f"Binary data: {raw_data.hex()}"
+                    # Clean up extracted file
+                    os.remove(extracted_file_path)
+                except Exception as e:
+                    extracted_data = f"Could not read extracted data: {str(e)}"
+            else:
+                extracted_data = "No extracted data file found"
+            
+            return {
+                "password_found": True,
+                "password": password or "unknown",
+                "extracted_data": extracted_data[:500] + "..." if len(extracted_data) > 500 else extracted_data,
+                "message": f"Password cracked! Found password: '{password}'" if password else "Password cracked! But password could not be determined."
+            }
+        elif result.returncode == 1:
+            # No password found
+            # Clean up any potential output files
+            if os.path.exists(extracted_file_path):
+                try:
+                    os.remove(extracted_file_path)
+                except:
+                    pass
+                    
+            return {
+                "password_found": False,
+                "password": None,
+                "extracted_data": None,
+                "message": "Password cracking completed. No password found in wordlist."
+            }
+        else:
+            # Error occurred
+            # Clean up any potential output files
+            if os.path.exists(extracted_file_path):
+                try:
+                    os.remove(extracted_file_path)
+                except:
+                    pass
+                    
+            return {
+                "password_found": False,
+                "password": None,
+                "extracted_data": None,
+                "message": f"StegSeek execution failed with return code {result.returncode}: {output[:500]}..."
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "password_found": False,
+            "password": None,
+            "extracted_data": None,
+            "message": "StegSeek timed out after 5 minutes"
+        }
+    except Exception as e:
+        return {
+            "password_found": False,
+            "password": None,
+            "extracted_data": None,
+            "message": f"StegSeek execution failed: {str(e)}"
+        }
+
 def crack_steghide_password(image_path):
     """Attempt to crack steghide password using a dictionary attack."""
+    # First try StegSeek if available and wordlist exists
+    wordlist_path = "/processor/wordlists/rockyou.txt"
+    if is_tool_installed("stegseek") and os.path.exists(wordlist_path):
+        result = crack_steghide_password_with_stegseek(image_path, wordlist_path)
+        # If StegSeek found a password, return the result
+        if isinstance(result, dict) and result.get("password_found"):
+            return result
+        # If StegSeek didn't find a password, fall back to the basic dictionary attack
+    
     if not is_tool_installed("steghide"):
         return "Steghide tool is not installed or not available in PATH"
     
@@ -178,12 +318,6 @@ def crack_steghide_password(image_path):
     # Check if file supports steghide (JPEG or BMP)
     if not image_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
         return "Steghide only works with JPEG and BMP files"
-    
-    # Determine file format for steghide
-    if image_path.lower().endswith(('.jpg', '.jpeg')):
-        file_format = "JPEG"
-    else:
-        file_format = "BMP"
     
     # Try each password
     for password in common_passwords:
@@ -259,47 +393,111 @@ def crack_steghide_password(image_path):
         "message": "Password cracking completed. No password found in dictionary."
     }
 
+def get_file_extension_from_mime(content_type, original_filename):
+    """Get appropriate file extension based on content type and original filename"""
+    # First, try to get extension from the original filename
+    if original_filename:
+        _, ext = os.path.splitext(original_filename.lower())
+        if ext:
+            return ext
+    
+    # If that doesn't work, try to guess from content type
+    if content_type:
+        # Handle common image types
+        mime_to_ext = {
+            'image/jpeg': '.jpg',
+            'image/jpg': '.jpg',
+            'image/png': '.png',
+            'image/gif': '.gif',
+            'image/bmp': '.bmp',
+            'image/tiff': '.tiff',
+            'image/webp': '.webp'
+        }
+        if content_type.lower() in mime_to_ext:
+            return mime_to_ext[content_type.lower()]
+        
+        # Try to guess extension from MIME type
+        ext = mimetypes.guess_extension(content_type)
+        if ext:
+            return ext
+    
+    # Default to .bin if we can't determine
+    return '.bin'
+
 @app.route('/process', methods=['POST'])
 def process():
     data = request.json
     file_data = data.get('fileData') if data else None
     file_name = data.get('fileName') if data else None
+    content_type = data.get('contentType') if data else None
     original_file_id = data.get('originalFileId') if data else None
     
     # Validate file data
     if not file_data:
         return jsonify({'error': 'Missing file data'}), 400
     
-    # Decode base64 file data
+    # Decode base64 file data with better error handling
     try:
         file_bytes = base64.b64decode(file_data)
         if len(file_bytes) == 0:
             return jsonify({'error': 'File data is empty'}), 400
+        print(f"Decoded file data. Size: {len(file_bytes)} bytes")
     except Exception as e:
         return jsonify({'error': f'Cannot decode file data: {str(e)}'}), 400
+    
+    # Validate that the decoded data matches expected size if provided
+    expected_size = data.get('fileSize') if data else None
+    if expected_size and len(file_bytes) != expected_size:
+        print(f"Warning: File size mismatch. Expected: {expected_size}, Actual: {len(file_bytes)}")
     
     # Save file data to a temporary file with proper extension
     tmp_file = None
     local_path = None
     try:
-        # Extract file extension from the original file name
-        file_extension = ''
-        if file_name:
-            file_extension = os.path.splitext(file_name)[1].lower()
-        
-        # Validate and normalize file extension for all tools
-        supported_extensions = {'.png': '.png', '.bmp': '.bmp', '.jpg': '.jpg', '.jpeg': '.jpg', '.gif': '.gif'}
-        if file_extension in supported_extensions:
-            normalized_extension = supported_extensions[file_extension]
+        # Preserve the exact original extension - this is critical for steganalysis tools
+        file_extension = ""
+        if file_name and '.' in file_name:
+            file_extension = os.path.splitext(file_name)[1]
         else:
-            # Default to .png for unknown extensions
-            normalized_extension = '.png'
+            # Try to determine extension from content type if not in filename
+            file_extension = get_file_extension_from_mime(content_type, file_name)
         
-        # Create temporary file with proper extension
+        # Validate that we have a proper extension for steganalysis tools
+        supported_extensions = {'.png': '.png', '.bmp': '.bmp', '.jpg': '.jpg', '.jpeg': '.jpg', '.gif': '.gif'}
+        if file_extension.lower() in supported_extensions:
+            # Use the exact original extension to preserve file format
+            normalized_extension = file_extension
+        else:
+            # For unsupported extensions, try to map to a supported one based on content type
+            if content_type:
+                if 'image/jpeg' in content_type or 'image/jpg' in content_type:
+                    normalized_extension = '.jpg'
+                elif 'image/png' in content_type:
+                    normalized_extension = '.png'
+                elif 'image/bmp' in content_type:
+                    normalized_extension = '.bmp'
+                elif 'image/gif' in content_type:
+                    normalized_extension = '.gif'
+                else:
+                    # Default to .jpg for unknown image types
+                    normalized_extension = '.jpg' if content_type and content_type.startswith('image/') else file_extension
+            else:
+                normalized_extension = file_extension
+        
+        # Create temporary file with the exact same extension as the original
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=normalized_extension)
         tmp_file.write(file_bytes)
         tmp_file.flush()  # Ensure data is written
         local_path = tmp_file.name
+        print(f"Created temporary file: {local_path}")
+        print(f"Original filename: {file_name}")
+        print(f"File extension used: {normalized_extension}")
+        print(f"File size: {len(file_bytes)} bytes")
+        
+        # Verify file was written correctly
+        written_size = os.path.getsize(local_path)
+        if written_size != len(file_bytes):
+            print(f"Warning: File write verification failed. Expected: {len(file_bytes)}, Written: {written_size}")
     except Exception as e:
         if tmp_file:
             tmp_file.close()
@@ -311,9 +509,19 @@ def process():
     # Ensure file is properly written
     try:
         file_size = os.path.getsize(local_path)
+        print(f"Temporary file size: {file_size} bytes")
         if file_size == 0:
             os.unlink(local_path)  # Clean up
             return jsonify({'error': 'Temporary file is empty'}), 400
+            
+        # Additional verification: try to open as image if it's supposed to be one
+        if content_type and content_type.startswith('image/'):
+            try:
+                img = Image.open(local_path)
+                print(f"Image verification successful. Dimensions: {img.size}, Mode: {img.mode}")
+                img.close()
+            except Exception as img_error:
+                print(f"Warning: Image verification failed: {img_error}")
     except Exception as e:
         if local_path and os.path.exists(local_path):
             os.unlink(local_path)  # Clean up
@@ -341,36 +549,30 @@ def process():
             else:
                 tools["zsteg"] = "echo 'Zsteg tool is not installed or not available in PATH'"
                 
-            if is_tool_installed("steghide"):
-                # Use specific steghide command based on file extension
-                if local_path.lower().endswith(('.jpg', '.jpeg')):
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' -sf JPEG 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-                elif local_path.lower().endswith('.bmp'):
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' -sf BMP 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-                elif local_path.lower().endswith('.wav'):
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' -sf WAVE 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-                else:
-                    # Default to auto-detection
-                    tools["steghide"] = f"steghide info '{local_path}' -p '' 2>&1 || echo 'Steghide analysis complete but no hidden data found'"
-            else:
-                tools["steghide"] = "echo 'Steghide tool is not installed or not available in PATH'"
+            # Steghide info check removed as per user request
+            # if is_tool_installed("steghide"): ...
                 
             tools["exiftool"] = f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'"
             tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
             
             results = {}
             for tool, cmd in tools.items():
+                print(f"[DEBUG] Running tool: {tool}")
                 results[tool] = run_command(cmd)
-                
+                print(f"[DEBUG] Finished tool: {tool}")
+
             # Run zsteg separately to ensure file is still available
             if is_tool_installed("zsteg"):
+                print("[DEBUG] Running additional tool: zsteg")
                 results["zsteg"] = run_zsteg_command(local_path)
             else:
                 results["zsteg"] = "zsteg tool is not installed or not available in PATH"
                 
             # Add steghide password cracking for supported file types
             if is_tool_installed("steghide") and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
+                print("[DEBUG] Starting StegSeek password cracking (this may take time)...")
                 results["steghide_crack"] = crack_steghide_password(local_path)
+                print("[DEBUG] Finished StegSeek password cracking")
             else:
                 results["steghide_crack"] = "Steghide password cracking not available for this file type or steghide not installed"
                 
