@@ -462,7 +462,14 @@ def process():
     if not file_data and original_file_id and mongo_client:
         try:
             print(f"[DEBUG] Fetching file directly from MongoDB GridFS: {original_file_id}")
-            db = mongo_client.get_database() # Uses default db from URI
+            # Try to get database from URI, fallback to 'test' if not specified
+            try:
+                db = mongo_client.get_database()
+            except Exception:
+                # If URI doesn't have a database, get_database() might fail or return None depending on version
+                print("[WARN] No default database in URI, falling back to 'test'")
+                db = mongo_client.get_database("test")
+
             fs = gridfs.GridFS(db, collection="uploads") # Assuming 'uploads' bucket
             
             # Read from GridFS
