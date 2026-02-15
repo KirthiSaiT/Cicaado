@@ -29,7 +29,8 @@ COPY . .
 RUN npm run build
 
 # Clean up development dependencies
-RUN npm prune --production
+# Clean up development dependencies
+# RUN npm prune --production
 
 EXPOSE 3000
 
