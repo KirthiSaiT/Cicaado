@@ -167,7 +167,8 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
       let data;
       try {
         data = JSON.parse(responseText);
-      } catch (e) {
+      } catch {
+        // e is unused, so we can omit it
         console.error("Non-JSON response:", responseText);
         throw new Error(`Server Error (${res.status}): ${responseText.substring(0, 100)}...`);
       }
@@ -177,9 +178,10 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
       } else {
         setAnalysisError(data.error || "Unknown server error");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setAnalysisError(err.message || "Failed to run analysis.");
+      const message = err instanceof Error ? err.message : "Failed to run analysis.";
+      setAnalysisError(message);
     }
     setIsAnalysing(false);
   };
