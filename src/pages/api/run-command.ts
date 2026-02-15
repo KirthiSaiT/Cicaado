@@ -93,11 +93,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const data = await response.json();
     return res.status(200).json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error processing analysis request:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
     return res.status(500).json({
-      error: `Analysis failed: ${error.message || 'Unknown error'}`,
-      details: error.stack
+      error: `Analysis failed: ${errorMessage}`,
+      details: errorStack
     });
   }
 }
