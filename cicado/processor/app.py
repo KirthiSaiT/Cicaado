@@ -489,7 +489,9 @@ def process():
                 
         except Exception as e:
              # Fallback or error
+             import traceback
              print(f"[ERROR] MongoDB Fetch Failed: {e}")
+             print(traceback.format_exc())
              return jsonify({'error': f'Failed to fetch from MongoDB: {str(e)}'}), 500
 
     # DECODE BASE64 (Legacy/Direct Path)
