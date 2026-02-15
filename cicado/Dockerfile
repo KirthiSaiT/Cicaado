@@ -17,7 +17,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (including devDependencies like TypeScript for the build)
-RUN npm ci
+# Install dependencies (using npm install because package-lock.json might be missing/outdated)
+RUN npm install
 
 # (Sharp installs correctly automatically on Debian-based images)
 
