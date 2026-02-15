@@ -8,7 +8,23 @@ import io
 import shutil
 import mimetypes
 
+import mimetypes
+from pymongo import MongoClient
+import gridfs
+from bson.objectid import ObjectId
+
 app = Flask(__name__)
+
+# Connect to MongoDB
+MONGO_URI = os.environ.get('MONGODB_URI')
+mongo_client = None
+if MONGO_URI:
+    try:
+        mongo_client = MongoClient(MONGO_URI)
+        print("[DEBUG] Connected to MongoDB")
+    except Exception as e:
+        print(f"[ERROR] Could not connect to MongoDB: {e}")
+
 
 def is_tool_installed(tool_name):
     """Check if a tool is installed and available in PATH"""
@@ -436,18 +452,50 @@ def process():
     content_type = data.get('contentType') if data else None
     original_file_id = data.get('originalFileId') if data else None
     
-    # Validate file data
-    if not file_data:
-        return jsonify({'error': 'Missing file data'}), 400
+    # Validate file data or ID
+    if not file_data and not original_file_id:
+        return jsonify({'error': 'Missing file data or originalFileId'}), 400
     
-    # Decode base64 file data with better error handling
-    try:
-        file_bytes = base64.b64decode(file_data)
-        if len(file_bytes) == 0:
-            return jsonify({'error': 'File data is empty'}), 400
-        print(f"Decoded file data. Size: {len(file_bytes)} bytes")
-    except Exception as e:
-        return jsonify({'error': f'Cannot decode file data: {str(e)}'}), 400
+    file_bytes = None
+    
+    # FETCH FROM MONGODB (Optimized Path)
+    if not file_data and original_file_id and mongo_client:
+        try:
+            print(f"[DEBUG] Fetching file directly from MongoDB GridFS: {original_file_id}")
+            db = mongo_client.get_database() # Uses default db from URI
+            fs = gridfs.GridFS(db, collection="uploads") # Assuming 'uploads' bucket
+            
+            # Read from GridFS
+            try:
+                grid_out = fs.get(ObjectId(original_file_id))
+                file_bytes = grid_out.read()
+                
+                # Update metadata if missing
+                if not file_name:
+                    file_name = grid_out.filename
+                if not content_type:
+                    content_type = getattr(grid_out, 'contentType', None)
+                    
+                print(f"[DEBUG] Successfully fetched from MongoDB. Size: {len(file_bytes)} bytes")
+            except gridfs.errors.NoFile:
+                return jsonify({'error': 'File not found in GridFS'}), 404
+                
+        except Exception as e:
+             # Fallback or error
+             print(f"[ERROR] MongoDB Fetch Failed: {e}")
+             return jsonify({'error': f'Failed to fetch from MongoDB: {str(e)}'}), 500
+
+    # DECODE BASE64 (Legacy/Direct Path)
+    if file_bytes is None and file_data:
+        try:
+            file_bytes = base64.b64decode(file_data)
+        except Exception as e:
+            return jsonify({'error': f'Cannot decode file data: {str(e)}'}), 400
+
+    if not file_bytes or len(file_bytes) == 0:
+         return jsonify({'error': 'File data is empty'}), 400
+         
+    print(f"File data ready. Size: {len(file_bytes)} bytes")
     
     # Validate that the decoded data matches expected size if provided
     expected_size = data.get('fileSize') if data else None
