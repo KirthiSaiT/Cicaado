@@ -121,16 +121,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       clearTimeout(timeoutId);
     }
 
+    // Log the processor URL (masked) for debugging
+    console.log(`Connecting to Processor at: ${processorUrl}, for file: ${fileName}`);
+
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Error from processor:', errorData);
-      return res.status(response.status).json({ error: errorData.error || 'Failed to process file.' });
+      const errorText = await response.text();
+      console.error(`Error from processor (${response.status}):`, errorText);
+      try {
+        const errorJson = JSON.parse(errorText);
+        return res.status(response.status).json({ error: errorJson.error || 'Failed to process file.' });
+      } catch {
+        return res.status(response.status).json({ error: `Backend Error (${response.status}): ${errorText.substring(0, 200)}` });
+      }
     }
 
     const data = await response.json();
     return res.status(200).json(data);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error processing analysis request:', error);
-    return res.status(500).json({ error: 'Internal server error.' });
+    return res.status(500).json({
+      error: `Analysis failed: ${error.message || 'Unknown error'}`,
+      details: error.stack
+    });
   }
 }

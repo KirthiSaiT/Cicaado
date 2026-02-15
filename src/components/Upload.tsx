@@ -53,25 +53,25 @@ function ToolResultCard({ tool, result }: ToolResultCardProps) {
       </div>
     );
   }
-  
+
   // Handle steghide cracking results
   if (tool === 'steghide_crack' && result && typeof result === 'object') {
     const steghideResult = result as SteghideCrackResult;
-    
+
     return (
       <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
         <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
           Steghide Password Crack
         </h3>
-        
+
         {steghideResult.password_found ? (
           <div className="space-y-4">
             <div className="p-4 bg-green-900/30 border border-green-700/50 rounded-lg">
               <h4 className="text-green-400 font-bold mb-2">✅ Password Found!</h4>
               <p className="text-green-300">Password: <span className="font-mono bg-zinc-800 px-2 py-1 rounded">{steghideResult.password}</span></p>
             </div>
-            
+
             <div>
               <h4 className="text-lime-400 font-bold mb-2">Extracted Data:</h4>
               <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4">
@@ -88,7 +88,7 @@ function ToolResultCard({ tool, result }: ToolResultCardProps) {
       </div>
     );
   }
-  
+
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
       <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
@@ -162,15 +162,24 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: uploadedFile.key }),
       });
-      const data = await res.json();
+
+      const responseText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Non-JSON response:", responseText);
+        throw new Error(`Server Error (${res.status}): ${responseText.substring(0, 100)}...`);
+      }
+
       if (res.ok) {
         setAnalysisResult(data);
       } else {
-        setAnalysisError(data.error);
+        setAnalysisError(data.error || "Unknown server error");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setAnalysisError("Failed to run analysis.");
+      setAnalysisError(err.message || "Failed to run analysis.");
     }
     setIsAnalysing(false);
   };
