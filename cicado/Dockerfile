@@ -8,8 +8,8 @@ ARG NEXT_PUBLIC_PROCESSOR_URL
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 ENV NEXT_PUBLIC_PROCESSOR_URL=${NEXT_PUBLIC_PROCESSOR_URL}
 
-# Increase Node.js memory limit for build process
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+# Remove global NODE_OPTIONS to let runtime manage memory naturally
+# ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 WORKDIR /app
 
@@ -25,8 +25,8 @@ RUN npm install
 # Copy application files
 COPY . .
 
-# Build the Next.js application
-RUN npm run build
+# Build the Next.js application (with increased memory)
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Clean up development dependencies
 # Clean up development dependencies
