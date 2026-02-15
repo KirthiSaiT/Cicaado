@@ -52,8 +52,8 @@ WORKDIR /app
 # Create wordlists directory
 RUN mkdir -p /processor/wordlists
 
-# Copy local wordlists directory (including rockyou.txt) into the container
-COPY ./wordlists /processor/wordlists
+# Download rockyou.txt directly (so we don't need to commit it to Git)
+RUN wget -O /processor/wordlists/rockyou.txt https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt
 
 # Copy application files
 COPY . .

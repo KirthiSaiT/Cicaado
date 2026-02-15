@@ -43,6 +43,7 @@ next-env.d.ts
 # clerk configuration (can include secrets)
 /.clerk/
 
-Foremost analysis complete but no data found
-Processing: /tmp/tmp5q0talgk.jpg
-|*|
+# Ignore large wordlists (downloaded by Docker instead)
+cicado/processor/wordlists/rockyou.txt
+cicado/processor/wordlists/
+cicado/processor/wordlists/

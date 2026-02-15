@@ -44,60 +44,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fileName = file.metadata?.originalName || file.filename;
     const contentType = file.contentType || 'application/octet-stream';
 
-    // Read file data directly into memory with better error handling
-    console.log(`Reading file from MongoDB GridFS: ${fileName}`);
+    // Verify we have file data (Wait! We don't need to read it anymore!)
+    // OPTIMIZATION: Instead of reading the file into memory (which crashes the server),
+    // We just tell the Processor the ID, and let it fetch directly from MongoDB.
 
-    // Stream file from GridFS to buffer
-    const chunks: Buffer[] = [];
-    const downloadStream = bucket.openDownloadStream(new ObjectId(key));
+    console.log(`Delegating file fetch to Processor for ID: ${key}`);
+    const fileDataBase64 = ""; // Empty, to save memory
+    // fileName and contentType are already defined above
 
-    // Collect all data chunks
-    downloadStream.on('data', (chunk) => {
-      chunks.push(chunk);
-    });
+    // We skip the downloadStream logic completely!
 
-    // Wait for the download to complete
-    const fileBuffer = await new Promise<Buffer>((resolve, reject) => {
-      downloadStream.on('error', (error) => {
-        console.error(`Error downloading file from GridFS: ${error}`);
-        reject(new Error(`Failed to download file from MongoDB: ${error.message}`));
-      });
-
-      downloadStream.on('end', () => {
-        const fullBuffer = Buffer.concat(chunks);
-        console.log(`File successfully read from MongoDB. Size: ${fullBuffer.length} bytes`);
-        resolve(fullBuffer);
-      });
-    });
-
-    // Verify we have file data
-    if (fileBuffer.length === 0) {
-      return res.status(500).json({ error: 'Downloaded file is empty.' });
-    }
-
-    console.log(`File read successfully from MongoDB. Size: ${fileBuffer.length} bytes`);
-
-    // Additional validation: check if the file size matches what's stored in metadata
-    const expectedSize = file.metadata?.size;
-    if (expectedSize && fileBuffer.length !== expectedSize) {
-      console.warn(`File size mismatch. Expected: ${expectedSize}, Actual: ${fileBuffer.length}`);
-    }
-
-    // Convert file buffer to base64 for transmission
-    const fileDataBase64 = fileBuffer.toString('base64');
-
-    // Validate base64 encoding
-    try {
-      const decodedBuffer = Buffer.from(fileDataBase64, 'base64');
-      if (decodedBuffer.length !== fileBuffer.length) {
-        console.warn(`Base64 encoding validation failed. Original: ${fileBuffer.length}, Decoded: ${decodedBuffer.length}`);
-      }
-    } catch (decodeError) {
-      console.error('Base64 encoding validation error:', decodeError);
-      return res.status(500).json({ error: 'Failed to validate file encoding.' });
-    }
-
-    // Send the file data, original filename, and content type to the processor
     // Increase timeout to 10 minutes (600000 ms) for long-running tools like stegseek
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 600000);
