@@ -2,9 +2,11 @@ FROM node:18-slim
 
 # Define build arguments
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_PROCESSOR_URL
 
 # Set environment variables
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+ENV NEXT_PUBLIC_PROCESSOR_URL=${NEXT_PUBLIC_PROCESSOR_URL}
 
 # Increase Node.js memory limit for build process
 ENV NODE_OPTIONS="--max-old-space-size=4096"
