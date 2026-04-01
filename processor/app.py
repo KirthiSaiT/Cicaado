@@ -462,8 +462,15 @@ def process():
     if not file_data and original_file_id and mongo_client:
         try:
             print(f"[DEBUG] Fetching file directly from MongoDB GridFS: {original_file_id}")
-            db = mongo_client.get_database() # Uses default db from URI
-            fs = gridfs.GridFS(db, collection="uploads") # Assuming 'uploads' bucket
+            # Try to get database from URI
+            try:
+                db = mongo_client.get_database()
+            except Exception:
+                # If URI doesn't have a default ref, standard drivers default to 'test'
+                # We replicate this behavior here to match the frontend
+                db = mongo_client.get_database("test")
+
+            fs = gridfs.GridFS(db, collection="uploads")
             
             # Read from GridFS
             try:
@@ -482,7 +489,9 @@ def process():
                 
         except Exception as e:
              # Fallback or error
+             import traceback
              print(f"[ERROR] MongoDB Fetch Failed: {e}")
+             print(traceback.format_exc())
              return jsonify({'error': f'Failed to fetch from MongoDB: {str(e)}'}), 500
 
     # DECODE BASE64 (Legacy/Direct Path)
