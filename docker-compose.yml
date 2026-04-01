@@ -28,9 +28,10 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        - NEXT_PUBLIC_PROCESSOR_URL=http://processor:5000
     environment:
       - NEXT_PUBLIC_PROCESSOR_URL=http://processor:5000
       - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
@@ -40,6 +41,7 @@ services:
       - "3001:3000"  # Changed to port 3001 to avoid conflicts
     volumes:
       - .:/app:cached
+      - /app/node_modules
       - /app/.next
     depends_on:
       - processor

@@ -3,31 +3,25 @@ import { MongoClient } from 'mongodb';
 const uri = process.env.MONGODB_URI;
 const options = {};
 
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+const globalWithMongo = global as typeof globalThis & {
+  _mongoClientPromise?: Promise<MongoClient>;
+};
 
-if (!uri) {
-  throw new Error('Please add your MongoDB URI to .env.local');
-}
-
-if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable so that the MongoClient
-  // instance is not created multiple times
-  const globalWithMongo = global as typeof globalThis & {
-    _mongoClientPromise?: Promise<MongoClient>;
-  };
+// Exported as a function so callers always get a fresh attempt if a prior
+// connection failed (e.g. DB was paused and woke up after the container started).
+export default function getClient(): Promise<MongoClient> {
+  if (!uri) {
+    return Promise.reject(new Error('MONGODB_URI is not set.'));
+  }
 
   if (!globalWithMongo._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    globalWithMongo._mongoClientPromise = client.connect();
+    const client = new MongoClient(uri, options);
+    globalWithMongo._mongoClientPromise = client.connect().catch((err) => {
+      // Clear cache so the next request retries instead of reusing a stale rejection
+      globalWithMongo._mongoClientPromise = undefined;
+      throw err;
+    });
   }
-  clientPromise = globalWithMongo._mongoClientPromise;
-} else {
-  // In production mode, it's best to not use a global variable
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
-}
 
-// Export a module-scoped MongoClient promise. By doing this in a
-// separate module, the client can be shared across functions.
-export default clientPromise;
+  return globalWithMongo._mongoClientPromise;
+}

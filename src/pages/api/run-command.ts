@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Connect to MongoDB to retrieve the file
-    const client = await clientPromise;
+    const client = await clientPromise();
     const db = client.db();
     const bucket = new GridFSBucket(db, { bucketName: 'uploads' });
 

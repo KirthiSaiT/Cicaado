@@ -62,7 +62,7 @@ export default async function handler(
       const contentType = uploadedFile.mimetype || 'application/octet-stream';
       
       // Connect to MongoDB
-      const client = await clientPromise;
+      const client = await clientPromise();
       const db = client.db();
       
       // Create GridFS bucket
@@ -142,7 +142,7 @@ export default async function handler(
     }
     try {
       // Connect to MongoDB
-      const client = await clientPromise;
+      const client = await clientPromise();
       const db = client.db();
       
       // Create GridFS bucket
