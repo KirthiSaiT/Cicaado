@@ -27,10 +27,17 @@ RUN apt-get update && \
         pngcheck \
         foremost \
         steghide \
-        stegseek \
         binwalk && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Install stegseek from GitHub release (not in apt repos) — entirely optional
+RUN (wget -q -O /tmp/stegseek.deb https://github.com/RickdeJager/stegseek/releases/download/v0.6/stegseek_0.6-1.deb && \
+    apt-get update -qq && \
+    apt-get install -y /tmp/stegseek.deb && \
+    rm -f /tmp/stegseek.deb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*) || echo "stegseek install failed, continuing without it"
 
 # Install outguess (optional)
 RUN apt-get update && \
@@ -52,8 +59,12 @@ WORKDIR /app
 # Create wordlists directory
 RUN mkdir -p /processor/wordlists
 
-# Download rockyou.txt directly (so we don't need to commit it to Git)
-RUN wget -O /processor/wordlists/rockyou.txt https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt
+# Download rockyou.txt — optional, stegseek falls back to built-in dict if missing
+RUN wget -q -O /processor/wordlists/rockyou.txt \
+        https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt || \
+    wget -q -O /processor/wordlists/rockyou.txt \
+        https://github.com/danielmiessler/SecLists/raw/master/Passwords/Leaked-Databases/rockyou.txt.tar.gz || \
+    echo "Warning: rockyou.txt unavailable — stegseek will use built-in fallback dict"
 
 # Copy application files
 COPY . .

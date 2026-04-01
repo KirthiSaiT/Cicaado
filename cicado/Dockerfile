@@ -1,10 +1,10 @@
-FROM node:18-slim
+FROM node:20-slim
 
 # Define build arguments
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-ARG NEXT_PUBLIC_PROCESSOR_URL
+ARG NEXT_PUBLIC_PROCESSOR_URL=http://processor:5000
 
-# Set environment variables
+# Bake public env vars at build time (required for Next.js NEXT_PUBLIC_* vars)
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 ENV NEXT_PUBLIC_PROCESSOR_URL=${NEXT_PUBLIC_PROCESSOR_URL}
 
@@ -16,9 +16,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (including devDependencies like TypeScript for the build)
-# Install dependencies (using npm install because package-lock.json might be missing/outdated)
-RUN npm install
+# Delete Windows-generated lockfile so npm resolves Linux-native bindings fresh
+RUN rm -f package-lock.json && npm install
 
 # (Sharp installs correctly automatically on Debian-based images)
 

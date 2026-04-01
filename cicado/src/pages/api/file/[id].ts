@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid file ID format' });
     }
 
-    const client = await clientPromise;
+    const client = await clientPromise();
     const db = client.db();
     const bucket = new GridFSBucket(db, { bucketName: 'uploads' });
 

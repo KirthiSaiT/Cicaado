@@ -1,6 +1,5 @@
 "use client";
 
-import Nav from "@/components/Nav";
 import Upload from "@/components/Upload";
 import Stegsolve from "@/components/Stegsolve";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Nav />
       <Upload
         onImageUpload={(file) => {
           setUploadedImage(file);

@@ -4,10 +4,7 @@ import os
 import subprocess
 import base64
 from PIL import Image
-import io
 import shutil
-import mimetypes
-
 import mimetypes
 from pymongo import MongoClient
 import gridfs
