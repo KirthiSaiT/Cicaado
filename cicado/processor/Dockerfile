@@ -51,7 +51,7 @@ RUN gem install zsteg -v 0.2.10 --no-document
 RUN ruby -v && gem list zsteg
 
 # Install Python dependencies
-RUN pip install --no-cache-dir flask pillow pymongo dnspython
+RUN pip install --no-cache-dir flask flask-cors pillow pymongo dnspython
 
 # Create app directory
 WORKDIR /app

@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import tempfile
 import os
 import subprocess
@@ -11,6 +12,7 @@ import gridfs
 from bson.objectid import ObjectId
 
 app = Flask(__name__)
+CORS(app)
 
 # Connect to MongoDB
 MONGO_URI = os.environ.get('MONGODB_URI')
@@ -654,4 +656,5 @@ def process():
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
