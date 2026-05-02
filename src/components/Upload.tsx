@@ -1,0 +1,297 @@
+import { useState, useEffect } from "react";
+import { FileUpload } from "@/components/ui/file-upload";
+import Image from 'next/image';
+
+// ToolResultCard: a separate component for each tool's output
+type AnalysisResult = {
+  [tool: string]: string | object | undefined;
+};
+
+interface StegsolveResultItem {
+  mode: string;
+  image?: string;
+  error?: string;
+}
+
+interface SteghideCrackResult {
+  password_found: boolean;
+  password: string | null;
+  extracted_data: string | null;
+  message: string;
+}
+
+type ToolResultCardProps = { tool: string; result: string | object | undefined };
+function ToolResultCard({ tool, result }: ToolResultCardProps) {
+  if (tool === 'stegsolve' && Array.isArray(result)) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+          {tool}
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {result.length === 0 && <div className="text-gray-400 col-span-4">No bit plane/LSB images found.</div>}
+          {(result as StegsolveResultItem[]).map((item, idx) => (
+            <div key={idx} className="flex flex-col items-center">
+              <div className="text-xs text-lime-300 mb-1 text-center">{item.mode}</div>
+              {item.image ? (
+                <Image
+                  src={`data:image/png;base64,${item.image}`}
+                  alt={item.mode}
+                  width={96}
+                  height={96}
+                  className="w-24 h-24 object-contain border border-zinc-700 rounded mb-1 bg-black"
+                  loader={({ src }) => src}
+                  unoptimized
+                />
+              ) : (
+                <div className="w-24 h-24 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-gray-500">No image</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Handle steghide cracking results
+  if (tool === 'steghide_crack' && result && typeof result === 'object') {
+    const steghideResult = result as SteghideCrackResult;
+
+    return (
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+          Steghide Password Crack
+        </h3>
+
+        {steghideResult.password_found ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-green-900/30 border border-green-700/50 rounded-lg">
+              <h4 className="text-green-400 font-bold mb-2">✅ Password Found!</h4>
+              <p className="text-green-300">Password: <span className="font-mono bg-zinc-800 px-2 py-1 rounded">{steghideResult.password}</span></p>
+            </div>
+
+            <div>
+              <h4 className="text-lime-400 font-bold mb-2">Extracted Data:</h4>
+              <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4">
+                {steghideResult.extracted_data}
+              </pre>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-amber-900/30 border border-amber-700/50 rounded-lg">
+            <h4 className="text-amber-400 font-bold mb-2">⚠️ No Password Found</h4>
+            <p className="text-amber-300">{steghideResult.message}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+      <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+        {tool}
+      </h3>
+      <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4">
+        {result
+          ? typeof result === 'string'
+            ? result
+            : JSON.stringify(result, null, 2)
+          : 'No output'}
+      </pre>
+    </div>
+  );
+}
+
+export default function Upload({ onImageUpload }: { onImageUpload?: (file: File, url: string) => void } = {}) {
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; url: string; key?: string } | null>(null);
+  const [fileUploadKey, setFileUploadKey] = useState(Date.now());
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isAnalysing, setIsAnalysing] = useState(false);
+
+  useEffect(() => {
+    const lastFile = localStorage.getItem("lastUploadedFile");
+    if (lastFile) {
+      setUploadedFile(JSON.parse(lastFile));
+    }
+  }, []);
+
+  const handleFileChange = async (files: File[]) => {
+    if (!files.length) return;
+
+    const formData = new FormData();
+    formData.append("file", files[0]);
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.url && data.key) {
+        const uploaded = { name: files[0].name, url: data.url, key: data.key };
+        setUploadedFile(uploaded);
+        localStorage.setItem("lastUploadedFile", JSON.stringify(uploaded));
+        if (onImageUpload && isImage(files[0].name)) {
+          onImageUpload(files[0], data.url);
+        }
+      } else {
+        console.error(data);
+        alert("Upload failed.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Upload failed due to network or server error.");
+    }
+  };
+
+  const handleAnalysis = async () => {
+    if (!uploadedFile?.key) return;
+    setIsAnalysing(true);
+    setAnalysisResult(null);
+    setAnalysisError(null);
+    try {
+      const res = await fetch("/api/run-command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: uploadedFile.key }),
+      });
+
+      const responseText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        // e is unused, so we can omit it
+        console.error("Non-JSON response:", responseText);
+        throw new Error(`Server Error (${res.status}): ${responseText.substring(0, 100)}...`);
+      }
+
+      if (res.ok) {
+        setAnalysisResult(data);
+      } else {
+        setAnalysisError(data.error || "Unknown server error");
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : "Failed to run analysis.";
+      setAnalysisError(message);
+    }
+    setIsAnalysing(false);
+  };
+
+  const isImage = (fileName: string) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileName);
+
+  const getFileIcon = (fileName: string) => {
+    if (isImage(fileName)) return "🖼️";
+    if (/\.(pdf)$/i.test(fileName)) return "📄";
+    if (/\.(doc|docx)$/i.test(fileName)) return "📝";
+    if (/\.(xls|xlsx)$/i.test(fileName)) return "📊";
+    if (/\.(zip|rar|7z)$/i.test(fileName)) return "📦";
+    if (/\.(mp4|avi|mov|mkv)$/i.test(fileName)) return "🎬";
+    if (/\.(mp3|wav|flac)$/i.test(fileName)) return "🎵";
+    return "📁";
+  };
+
+  const getFileSizeDisplay = () => "Size: Unknown";
+
+  const clearUploadedFile = () => {
+    setUploadedFile(null);
+    setAnalysisResult(null);
+    setAnalysisError(null);
+    localStorage.removeItem("lastUploadedFile");
+    setFileUploadKey(Date.now());
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <main className="container mx-auto mt-24 px-4 py-8">
+        <h1 className="text-4xl font-bold mb-4">Upload Your Files</h1>
+        <p className="text-lg mb-8">Use the file uploader below to select or drag and drop your files.</p>
+
+        <FileUpload key={fileUploadKey} onChange={handleFileChange} />
+
+        {uploadedFile && (
+          <div className="mt-8">
+            <h2 className="text-white text-lg font-medium mb-4">Selected File:</h2>
+
+            <div className="bg-slate-800 border border-slate-600 rounded-lg p-4 mb-2">
+              <div className="flex items-center justify-between text-gray-300">
+                <div className="flex items-center space-x-3">
+                  <div className="w-4 h-4 text-gray-400">{getFileIcon(uploadedFile.name)}</div>
+                  <span>{uploadedFile.name}</span>
+                </div>
+                <span className="text-sm text-gray-400">{getFileSizeDisplay()}</span>
+              </div>
+            </div>
+
+            {/* Delete Button */}
+            <button
+              onClick={clearUploadedFile}
+              className="text-red-400 hover:text-red-600 text-sm mb-4"
+            >
+              ❌ Delete File
+            </button>
+
+            {/* Analysis Button */}
+            <button
+              className="w-full bg-gradient-to-r from-green-500 to-lime-600 hover:from-green-600 hover:to-lime-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 shadow-lg mb-4"
+              onClick={handleAnalysis}
+              disabled={isAnalysing}
+            >
+              {isAnalysing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                  Analysing...
+                </span>
+              ) : "Start Analysis"}
+            </button>
+
+            {/* Analysis Result */}
+            {analysisResult && typeof analysisResult === 'object' && (
+              <div className="space-y-8 mt-10">
+                {[
+                  'binwalk',
+                  'cat',
+                  'exiftool',
+                  'strings',
+                  'foremost',
+                  'zsteg',
+                  'steghide',
+                  'steghide_crack', // Add this line to display steghide cracking results
+                  'outguess',
+                  'pngcheck',
+                  'stegsolve',
+                ].map((tool) => (
+                  <ToolResultCard key={tool} tool={tool} result={analysisResult[tool]} />
+                ))}
+              </div>
+            )}
+            {analysisError && (
+              <div className="text-red-500 mt-4">{analysisError}</div>
+            )}
+
+            {/* Security Notice */}
+            <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4 mt-4">
+              <div className="flex items-start space-x-3">
+                <div className="text-amber-500 mt-0.5">⚠️</div>
+                <div>
+                  <h3 className="text-amber-400 font-medium mb-1">Security Notice:</h3>
+                  <p className="text-gray-300 text-sm">
+                    Files are processed in a secure sandbox environment. No data is stored permanently after analysis.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
