@@ -27,9 +27,28 @@ RUN apt-get update && \
         pngcheck \
         foremost \
         steghide \
-        binwalk && \
+        binwalk \
+        golang \
+        dnsutils \
+        nmap && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Go tools for recon
+# Install Go tools for recon
+ENV GOPATH=/root/go
+ENV PATH=$PATH:/root/go/bin
+RUN go install github.com/projectdiscovery/httpx/cmd/httpx@latest && \
+    go install github.com/lc/gau/v2/cmd/gau@latest && \
+    go install github.com/tomnomnom/gf@latest && \
+    go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
+    go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+# Download and configure Gf-Patterns
+RUN git clone https://github.com/1ndianl33t/Gf-Patterns /tmp/Gf-Patterns && \
+    mkdir -p ~/.gf && \
+    cp /tmp/Gf-Patterns/*.json ~/.gf && \
+    rm -rf /tmp/Gf-Patterns
 
 # Install stegseek from GitHub release (not in apt repos) — entirely optional
 RUN (wget -q -O /tmp/stegseek.deb https://github.com/RickdeJager/stegseek/releases/download/v0.6/stegseek_0.6-1.deb && \
@@ -50,8 +69,8 @@ RUN gem install zsteg -v 0.2.10 --no-document
 # Verify zsteg works
 RUN ruby -v && gem list zsteg
 
-# Install Python dependencies
-RUN pip install --no-cache-dir flask flask-cors pillow pymongo dnspython
+# Install Python dependencies (stego + recon)
+RUN pip install --no-cache-dir flask flask-cors pillow pymongo dnspython colorama requests beautifulsoup4 shodan boto3 google-search-results python-whois
 
 # Create app directory
 WORKDIR /app

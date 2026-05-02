@@ -14,6 +14,9 @@ from bson.objectid import ObjectId
 app = Flask(__name__)
 CORS(app)
 
+from routes.recon import recon_bp
+app.register_blueprint(recon_bp, url_prefix='/api/recon')
+
 # Connect to MongoDB
 MONGO_URI = os.environ.get('MONGODB_URI')
 mongo_client = None
