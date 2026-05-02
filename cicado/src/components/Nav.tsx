@@ -17,6 +17,7 @@ export default function Nav() {
 
   const navItems = [
     { name: "Home", link: "/" },
+    { name: "Web", link: "/web" },
     { name: "CheatSheet", link: "/cheatsheet" },
     { name: "GitHub", link: "https://github.com/KirthiSaiT/Cicaado", external: true },
     { name: "Blog", link: "https://www.linkedin.com/in/kirthi-sai/", external: true },
