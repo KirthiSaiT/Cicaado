@@ -89,13 +89,20 @@ function ToolResultCard({ tool, result }: ToolResultCardProps) {
     );
   }
 
+  const isError = typeof result === 'string' && 
+                 (result.toLowerCase().includes('error') || 
+                  result.toLowerCase().includes('failed') || 
+                  result.toLowerCase().includes('not found') ||
+                  result.toLowerCase().includes('cannot') ||
+                  result.includes('Exception'));
+
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
-      <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
-        {tool}
+    <div className={`bg-zinc-900 border ${isError ? 'border-red-900/50' : 'border-zinc-700'} rounded-xl p-6 shadow-lg`}>
+      <h3 className={`${isError ? 'text-red-400' : 'text-lime-400'} text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2`}>
+        <span className={`inline-block w-2 h-2 rounded-full ${isError ? 'bg-red-500' : 'bg-lime-400'} animate-pulse`}></span>
+        {tool} {isError && <span className="text-sm">⚠️ Error</span>}
       </h3>
-      <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4">
+      <pre className={`${isError ? 'text-red-300' : 'text-green-300'} whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4`}>
         {result
           ? typeof result === 'string'
             ? result
@@ -112,6 +119,7 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isAnalysing, setIsAnalysing] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<string>("");
 
   useEffect(() => {
     const lastFile = localStorage.getItem("lastUploadedFile");
@@ -154,8 +162,10 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
   const handleAnalysis = async () => {
     if (!uploadedFile?.key) return;
     setIsAnalysing(true);
-    setAnalysisResult(null);
+    setAnalysisResult({}); // Reset to empty object so we can append partial results
     setAnalysisError(null);
+    setAnalysisStatus("Starting analysis...");
+    
     try {
       const res = await fetch("/api/run-command", {
         method: "POST",
@@ -163,27 +173,74 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
         body: JSON.stringify({ key: uploadedFile.key }),
       });
 
-      const responseText = await res.text();
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        // e is unused, so we can omit it
-        console.error("Non-JSON response:", responseText);
-        throw new Error(`Server Error (${res.status}): ${responseText.substring(0, 100)}...`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMsg = "Unknown server error";
+        try {
+          const parsed = JSON.parse(errorText);
+          errorMsg = parsed.error || errorMsg;
+        } catch (e) {
+          errorMsg = errorText;
+        }
+        setAnalysisError(errorMsg);
+        setIsAnalysing(false);
+        setAnalysisStatus("");
+        return;
       }
 
-      if (res.ok) {
-        setAnalysisResult(data);
-      } else {
-        setAnalysisError(data.error || "Unknown server error");
+      if (!res.body) {
+        setAnalysisError("No response body returned from server.");
+        setIsAnalysing(false);
+        setAnalysisStatus("");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let streamData = "";
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        streamData += decoder.decode(value, { stream: true });
+        
+        const lines = streamData.split('\n');
+        streamData = lines.pop() || "";
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const parsed = JSON.parse(line.substring(6));
+              
+              if (parsed.error) {
+                 setAnalysisError(parsed.error);
+                 break;
+              }
+              
+              if (parsed.status === "progress") {
+                setAnalysisStatus(parsed.message);
+                if (parsed.partial_result && parsed.tool) {
+                  setAnalysisResult(prev => ({...(prev || {}), [parsed.tool]: parsed.partial_result}));
+                }
+              } else if (parsed.status === "complete") {
+                setAnalysisResult(parsed.results);
+                setAnalysisStatus("");
+              }
+            } catch (e) {
+              console.error("Error parsing SSE data", e, "Line:", line);
+            }
+          }
+        }
       }
     } catch (err: unknown) {
       console.error(err);
       const message = err instanceof Error ? err.message : "Failed to run analysis.";
       setAnalysisError(message);
     }
+    
     setIsAnalysing(false);
+    setAnalysisStatus("");
   };
 
   const isImage = (fileName: string) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileName);
@@ -248,7 +305,7 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
               {isAnalysing ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
-                  Analysing...
+                  {analysisStatus || "Analysing..."}
                 </span>
               ) : "Start Analysis"}
             </button>
@@ -256,19 +313,7 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
             {/* Analysis Result */}
             {analysisResult && typeof analysisResult === 'object' && (
               <div className="space-y-8 mt-10">
-                {[
-                  'binwalk',
-                  'cat',
-                  'exiftool',
-                  'strings',
-                  'foremost',
-                  'zsteg',
-                  'steghide',
-                  'steghide_crack', // Add this line to display steghide cracking results
-                  'outguess',
-                  'pngcheck',
-                  'stegsolve',
-                ].map((tool) => (
+                {Object.keys(analysisResult).map((tool) => (
                   <ToolResultCard key={tool} tool={tool} result={analysisResult[tool]} />
                 ))}
               </div>
