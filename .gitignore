@@ -58,5 +58,4 @@ coverage.xml
 .pytest_cache/
 
 # project specific
-cicado/processor/wordlists/rockyou.txt
 processor/wordlists/rockyou.txt

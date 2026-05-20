@@ -600,6 +600,7 @@ def process():
                     yield json.dumps({"status": "progress", "message": "Starting analysis...", "tool": "init"}) + "\n"
                 
                 tools = {
+                    "hashes": f"echo 'MD5:' && md5sum '{local_path}' && echo '\\nSHA1:' && sha1sum '{local_path}' && echo '\\nSHA256:' && sha256sum '{local_path}'",
                     "cat": f"cat '{local_path}'",
                     "strings": f"strings -n 4 '{local_path}' || echo 'Strings command failed or no output'",
                     "binwalk": f"binwalk '{local_path}'"
