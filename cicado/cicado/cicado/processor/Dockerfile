@@ -70,7 +70,7 @@ RUN gem install zsteg -v 0.2.10 --no-document
 RUN ruby -v && gem list zsteg
 
 # Install Python dependencies (stego + recon)
-RUN pip install --no-cache-dir flask flask-cors pillow pymongo dnspython colorama requests beautifulsoup4 shodan boto3 google-search-results python-whois gunicorn
+RUN pip install --no-cache-dir flask flask-cors pillow pymongo dnspython colorama requests beautifulsoup4 shodan boto3 google-search-results python-whois
 
 # Create app directory
 WORKDIR /app
@@ -98,4 +98,4 @@ RUN chmod +x /usr/local/bin/stegsolve.jar || echo "Could not set permissions for
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "600", "app:app"]
+CMD ["python", "app.py"]

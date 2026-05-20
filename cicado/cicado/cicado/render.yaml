@@ -1,0 +1,35 @@
+services:
+  # ── Processor (Flask + forensic tools) ───────────────────────────────────────
+  - type: web
+    name: cicaado-processor
+    runtime: docker
+    dockerfilePath: ./processor/Dockerfile
+    dockerContext: ./processor
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: MONGODB_URI
+        sync: false   # Set manually in Render dashboard
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────────
+  - type: web
+    name: cicaado-frontend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /
+    buildArgs:
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false   # Set manually in Render dashboard
+      - key: NEXT_PUBLIC_PROCESSOR_URL
+        sync: false   # Set to https://cicaado-processor.onrender.com after processor deploys
+    envVars:
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: NEXT_PUBLIC_PROCESSOR_URL
+        sync: false
