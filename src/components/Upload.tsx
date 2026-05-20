@@ -89,6 +89,40 @@ function ToolResultCard({ tool, result }: ToolResultCardProps) {
     );
   }
 
+  if (tool === 'hashes' && typeof result === 'string') {
+    const lines = result.split('\n').filter(l => l.trim() !== '' && !l.includes('/tmp/')); // filter out the messy file paths if possible, or just extract hash
+    return (
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+          File Hashes & Malware Check
+        </h3>
+        <div className="space-y-3 mt-4">
+          {lines.map((line, idx) => {
+            const hashMatch = line.match(/([a-fA-F0-9]{32,64})/);
+            if (hashMatch) {
+              const hash = hashMatch[1];
+              return (
+                <div key={idx} className="bg-black/80 p-3 rounded flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                  <span className="font-mono text-green-300 break-all">{hash}</span>
+                  <a 
+                    href={`https://www.virustotal.com/gui/search/${hash}`} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1"
+                  >
+                    🔍 Check VirusTotal
+                  </a>
+                </div>
+              );
+            }
+            return <div key={idx} className="text-zinc-400 text-xs font-bold uppercase mt-4">{line.replace(':', '')}</div>;
+          })}
+        </div>
+      </div>
+    );
+  }
+
   const isError = typeof result === 'string' && 
                  (result.toLowerCase().includes('error') || 
                   result.toLowerCase().includes('failed') || 
