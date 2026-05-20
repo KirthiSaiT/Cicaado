@@ -7,6 +7,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // Get user ID from Clerk
+  const { getAuth } = require('@clerk/nextjs/server');
+  const auth = getAuth(req);
+  const identifier = auth?.userId || req.socket.remoteAddress || 'anonymous';
+
+  // Global concurrent job tracker
+  const globalAny: any = global;
+  if (!globalAny.activeJobs) {
+    globalAny.activeJobs = new Set();
+  }
+
+  if (globalAny.activeJobs.has(identifier)) {
+    return res.status(429).json({ error: 'You already have an analysis job running. Please wait for it to finish.' });
+  }
+
+  // Add user to active jobs
+  globalAny.activeJobs.add(identifier);
+
   // Directly access the JSON body
   const { key } = req.body;
 
@@ -69,7 +87,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           fileData: fileDataBase64,
           fileName: fileName,
           contentType: contentType,
-          originalFileId: key
+          originalFileId: key,
+          stream: true
         }),
         signal: controller.signal,
       });
@@ -91,8 +110,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    const data = await response.json();
-    return res.status(200).json(data);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    if (!response.body) {
+      res.write(`data: ${JSON.stringify({error: "No response body from processor"})}\n\n`);
+      res.end();
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(l => l.trim() !== '');
+      for (const line of lines) {
+        res.write(`data: ${line}\n\n`);
+      }
+    }
+    
+    res.end();
+    return;
   } catch (error: unknown) {
     console.error('Error processing analysis request:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -101,5 +143,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       error: `Analysis failed: ${errorMessage}`,
       details: errorStack
     });
+  } finally {
+    // Remove user from active jobs when done
+    if (globalAny.activeJobs) {
+      globalAny.activeJobs.delete(identifier);
+    }
   }
 }

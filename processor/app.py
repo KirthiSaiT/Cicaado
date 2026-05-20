@@ -590,65 +590,91 @@ def process():
             os.unlink(local_path)  # Clean up
         return jsonify({'error': f'Cannot access temporary file: {str(e)}'}), 400
     
+    stream_output = data.get('stream', False) if data else False
+    
     try:
-        # Create a temporary directory for output files
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Define tools with proper checks
-            tools = {
-                "cat": f"cat '{local_path}'",
-                "strings": f"strings -n 4 '{local_path}' || echo 'Strings command failed or no output'",
-                "binwalk": f"binwalk '{local_path}'"
-            }
-            
-            # Add conditional tools based on availability with better error messages
-            if is_tool_installed("foremost"):
-                tools["foremost"] = f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out' 2>/dev/null || echo 'Foremost analysis complete but no data found'"
-            else:
-                tools["foremost"] = "echo 'Foremost tool is not installed or not available in PATH'"
-                
-            if is_tool_installed("zsteg"):
-                # Use our custom function for better error handling
-                tools["zsteg"] = run_zsteg_command(local_path)
-            else:
-                tools["zsteg"] = "echo 'Zsteg tool is not installed or not available in PATH'"
-                
-            # Steghide info check removed as per user request
-            # if is_tool_installed("steghide"): ...
-                
-            tools["exiftool"] = f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'"
-            tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
-            
+        def generate_results():
             results = {}
-            for tool, cmd in tools.items():
-                print(f"[DEBUG] Running tool: {tool}")
-                results[tool] = run_command(cmd)
-                print(f"[DEBUG] Finished tool: {tool}")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                if stream_output:
+                    yield json.dumps({"status": "progress", "message": "Starting analysis...", "tool": "init"}) + "\n"
+                
+                tools = {
+                    "cat": f"cat '{local_path}'",
+                    "strings": f"strings -n 4 '{local_path}' || echo 'Strings command failed or no output'",
+                    "binwalk": f"binwalk '{local_path}'"
+                }
+                
+                if is_tool_installed("foremost"):
+                    tools["foremost"] = f"foremost -T -i '{local_path}' -o '{tmpdir}/foremost_out' && find '{tmpdir}/foremost_out' 2>/dev/null || echo 'Foremost analysis complete but no data found'"
+                else:
+                    tools["foremost"] = "echo 'Foremost tool is not installed or not available in PATH'"
+                    
+                if is_tool_installed("zsteg"):
+                    tools["zsteg"] = "zsteg_custom"
+                else:
+                    tools["zsteg"] = "echo 'Zsteg tool is not installed or not available in PATH'"
+                    
+                tools["exiftool"] = f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'"
+                tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
+                
+                for tool, cmd in tools.items():
+                    print(f"[DEBUG] Running tool: {tool}")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": f"Running {tool}...", "tool": tool}) + "\n"
+                    
+                    if tool == "zsteg" and cmd == "zsteg_custom":
+                        results[tool] = run_zsteg_command(local_path)
+                    else:
+                        results[tool] = run_command(cmd)
+                        
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": f"Finished {tool}", "tool": tool, "partial_result": results[tool]}) + "\n"
+                    print(f"[DEBUG] Finished tool: {tool}")
 
-            # Run zsteg separately to ensure file is still available
-            if is_tool_installed("zsteg"):
-                print("[DEBUG] Running additional tool: zsteg")
-                results["zsteg"] = run_zsteg_command(local_path)
-            else:
-                results["zsteg"] = "zsteg tool is not installed or not available in PATH"
+                if is_tool_installed("steghide") and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
+                    print("[DEBUG] Starting StegSeek password cracking (this may take time)...")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running steghide_crack (this may take time)...", "tool": "steghide_crack"}) + "\n"
+                    results["steghide_crack"] = crack_steghide_password(local_path)
+                    print("[DEBUG] Finished StegSeek password cracking")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished steghide_crack", "tool": "steghide_crack", "partial_result": results["steghide_crack"]}) + "\n"
+                else:
+                    results["steghide_crack"] = "Steghide password cracking not available for this file type or steghide not installed"
+
+                if stream_output:
+                    yield json.dumps({"status": "progress", "message": "Running stegsolve...", "tool": "stegsolve"}) + "\n"
+                results["stegsolve"] = analyze_stegsolve(local_path)
+                if stream_output:
+                    yield json.dumps({"status": "progress", "message": "Finished stegsolve", "tool": "stegsolve"}) + "\n"
                 
-            # Add steghide password cracking for supported file types
-            if is_tool_installed("steghide") and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
-                print("[DEBUG] Starting StegSeek password cracking (this may take time)...")
-                results["steghide_crack"] = crack_steghide_password(local_path)
-                print("[DEBUG] Finished StegSeek password cracking")
-            else:
-                results["steghide_crack"] = "Steghide password cracking not available for this file type or steghide not installed"
+                if local_path and os.path.exists(local_path):
+                    try:
+                        os.unlink(local_path)
+                    except Exception:
+                        pass
                 
-            results["stegsolve"] = analyze_stegsolve(local_path)
+                if stream_output:
+                    yield json.dumps({"status": "complete", "results": results}) + "\n"
+                else:
+                    yield results
+
+        if stream_output:
+            from flask import Response, stream_with_context
+            import json
+            return Response(stream_with_context(generate_results()), mimetype='application/x-ndjson')
+        else:
+            # Consume generator for non-streaming response
+            gen = generate_results()
+            res = None
+            try:
+                while True:
+                    res = next(gen)
+            except StopIteration:
+                pass
+            return jsonify(res)
             
-            # Clean up the temporary file after all tools have finished
-            if local_path and os.path.exists(local_path):
-                try:
-                    os.unlink(local_path)
-                except Exception:
-                    pass
-            
-            return jsonify(results)
     except Exception as e:
         # Clean up the temporary file if there was an error
         if local_path and os.path.exists(local_path):

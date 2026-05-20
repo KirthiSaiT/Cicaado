@@ -18,7 +18,11 @@ const parseForm = async (
   req: NextApiRequest
 ): Promise<{ files: formidable.Files }> => {
   return new Promise((resolve, reject) => {
-    const form = formidable({ multiples: false, keepExtensions: true });
+    const form = formidable({ 
+      multiples: false, 
+      keepExtensions: true,
+      maxFileSize: 50 * 1024 * 1024, // 50MB limit
+    });
     form.parse(req, (err: Error | null, fields: formidable.Fields, files: formidable.Files) => {
       if (err) reject(err);
       else resolve({ files });
@@ -130,8 +134,14 @@ export default async function handler(
         url: `/api/file/${fileId}`, 
         key: fileId.toString() 
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Upload error:", err);
+      
+      // Handle file size limit error from formidable
+      if (err && (err.code === 1009 || err.httpCode === 413 || (err.message && err.message.includes('maxFileSize')))) {
+        return res.status(413).json({ error: "File exceeds the 50MB limit." });
+      }
+      
       // Make sure we're sending JSON response
       return res.status(500).json({ error: "Failed to upload file." });
     }
