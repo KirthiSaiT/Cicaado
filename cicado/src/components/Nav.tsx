@@ -17,7 +17,8 @@ export default function Nav() {
 
   const navItems = [
     { name: "Home", link: "/" },
-    { name: "Steg", link: "/steg" },
+    { name: "Forensics", link: "/forensics" },
+    { name: "Stegsolve", link: "/steg" },
     { name: "Recon", link: "/web" },
     { name: "CheatSheet", link: "/cheatsheet" },
     { name: "GitHub", link: "https://github.com/KirthiSaiT/Cicaado", external: true },
