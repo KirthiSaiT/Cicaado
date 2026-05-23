@@ -134,11 +134,12 @@ export default async function handler(
         url: `/api/file/${fileId}`, 
         key: fileId.toString() 
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Upload error:", err);
       
       // Handle file size limit error from formidable
-      if (err && (err.code === 1009 || err.httpCode === 413 || (err.message && err.message.includes('maxFileSize')))) {
+      const error = err as { code?: number; httpCode?: number; message?: string } | null | undefined;
+      if (error && (error.code === 1009 || error.httpCode === 413 || (error.message && error.message.includes('maxFileSize')))) {
         return res.status(413).json({ error: "File exceeds the 50MB limit." });
       }
       

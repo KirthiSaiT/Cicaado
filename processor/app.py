@@ -411,6 +411,128 @@ def crack_steghide_password(image_path):
         "message": "Password cracking completed. No password found in dictionary."
     }
 
+def run_stegdetect(image_path):
+    """Run stegdetect against a JPEG image to identify steganography signature patterns."""
+    if not is_tool_installed("stegdetect"):
+        return "Stegdetect is not installed or available in PATH"
+    
+    if not image_path.lower().endswith(('.jpg', '.jpeg')):
+        return "Stegdetect only operates on JPEG files"
+        
+    try:
+        cmd = f'stegdetect -tjF "{image_path}" 2>&1'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+        output = result.stdout + result.stderr
+        
+        clean_lines = []
+        for line in output.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            basename = os.path.basename(image_path)
+            if basename in line:
+                line = line.replace(image_path, basename)
+            clean_lines.append(line)
+            
+        return '\n'.join(clean_lines).strip() or "No anomalies detected."
+    except subprocess.TimeoutExpired:
+        return "Stegdetect timed out after 30 seconds"
+    except Exception as e:
+        return f"Stegdetect execution failed: {str(e)}"
+
+def run_tesseract(image_path):
+    """Perform optical character recognition (OCR) using Tesseract to mine visual text."""
+    if not is_tool_installed("tesseract"):
+        return "Tesseract OCR engine is not installed or available in PATH"
+        
+    if not image_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.gif')):
+        return "Tesseract only operates on standard image formats"
+        
+    try:
+        cmd = f'tesseract "{image_path}" stdout -l eng 2>/dev/null'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+        output = result.stdout.strip()
+        
+        if output:
+            return output
+        return "No readable visual text detected in image."
+    except subprocess.TimeoutExpired:
+        return "Tesseract OCR timed out after 60 seconds"
+    except Exception as e:
+        return f"Tesseract OCR execution failed: {str(e)}"
+
+def run_outguess(image_path):
+    """Attempt to detect and extract Outguess steganography payloads using an empty key."""
+    if not is_tool_installed("outguess"):
+        return "Outguess tool is not installed or available in PATH"
+        
+    if not image_path.lower().endswith(('.jpg', '.jpeg')):
+        return "Outguess only operates on JPEG files"
+        
+    import uuid
+    unique_id = str(uuid.uuid4())[:8]
+    output_path = f"/tmp/outguess_output_{unique_id}.txt"
+    
+    try:
+        cmd = f'outguess -k "" -r "{image_path}" "{output_path}" 2>&1'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=45)
+        output = result.stdout + result.stderr
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            try:
+                with open(output_path, 'rb') as f:
+                    raw_data = f.read()
+                    try:
+                        extracted_data = raw_data.decode('utf-8')
+                    except UnicodeDecodeError:
+                        try:
+                            extracted_data = raw_data.decode('latin-1')
+                        except UnicodeDecodeError:
+                            extracted_data = f"Binary data: {raw_data.hex()}"
+                
+                os.remove(output_path)
+                return {
+                    "extracted": True,
+                    "payload": extracted_data[:1000] + "..." if len(extracted_data) > 1000 else extracted_data,
+                    "message": "Success! Payload extracted using default empty key."
+                }
+            except Exception as read_err:
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                return {
+                    "extracted": False,
+                    "payload": None,
+                    "message": f"Payload extracted but failed to read file: {str(read_err)}"
+                }
+        else:
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            lines = output.split('\n')
+            clean_lines = [line.strip() for line in lines if "outguess" not in line.lower() and line.strip()]
+            message = '\n'.join(clean_lines).strip() or "No data extracted with empty key."
+            return {
+                "extracted": False,
+                "payload": None,
+                "message": message
+            }
+            
+    except subprocess.TimeoutExpired:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        return {
+            "extracted": False,
+            "payload": None,
+            "message": "Outguess extraction timed out after 45 seconds"
+        }
+    except Exception as e:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        return {
+            "extracted": False,
+            "payload": None,
+            "message": f"Outguess execution failed: {str(e)}"
+        }
+
 def get_file_extension_from_mime(content_type, original_filename):
     """Get appropriate file extension based on content type and original filename"""
     # First, try to get extension from the original filename
@@ -644,11 +766,35 @@ def process():
                 else:
                     results["steghide_crack"] = "Steghide password cracking not available for this file type or steghide not installed"
 
-                if stream_output:
-                    yield json.dumps({"status": "progress", "message": "Running stegsolve...", "tool": "stegsolve"}) + "\n"
-                results["stegsolve"] = analyze_stegsolve(local_path)
-                if stream_output:
-                    yield json.dumps({"status": "progress", "message": "Finished stegsolve", "tool": "stegsolve"}) + "\n"
+                # stegdetect scan (JPEGs)
+                if local_path.lower().endswith(('.jpg', '.jpeg')):
+                    print("[DEBUG] Starting stegdetect analysis...")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running stegdetect...", "tool": "stegdetect"}) + "\n"
+                    results["stegdetect"] = run_stegdetect(local_path)
+                    print("[DEBUG] Finished stegdetect analysis")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished stegdetect", "tool": "stegdetect", "partial_result": results["stegdetect"]}) + "\n"
+
+                # outguess empty key scan (JPEGs)
+                if local_path.lower().endswith(('.jpg', '.jpeg')):
+                    print("[DEBUG] Starting outguess analysis...")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running outguess...", "tool": "outguess"}) + "\n"
+                    results["outguess"] = run_outguess(local_path)
+                    print("[DEBUG] Finished outguess analysis")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished outguess", "tool": "outguess", "partial_result": results["outguess"]}) + "\n"
+
+                # tesseract ocr text mining (all images)
+                if local_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.gif')):
+                    print("[DEBUG] Starting Tesseract OCR analysis...")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running tesseract_ocr...", "tool": "tesseract_ocr"}) + "\n"
+                    results["tesseract_ocr"] = run_tesseract(local_path)
+                    print("[DEBUG] Finished Tesseract OCR analysis")
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished tesseract_ocr", "tool": "tesseract_ocr", "partial_result": results["tesseract_ocr"]}) + "\n"
                 
                 if local_path and os.path.exists(local_path):
                     try:

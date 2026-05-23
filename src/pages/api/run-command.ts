@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import clientPromise from '@/lib/mongodb';
 import { GridFSBucket, ObjectId } from 'mongodb';
+import { getAuth } from '@clerk/nextjs/server';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -8,14 +9,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Get user ID from Clerk
-  const { getAuth } = require('@clerk/nextjs/server');
   const auth = getAuth(req);
   const identifier = auth?.userId || req.socket.remoteAddress || 'anonymous';
 
   // Global concurrent job tracker
-  const globalAny: any = global;
+  const globalAny = global as typeof globalThis & { activeJobs?: Set<string> };
   if (!globalAny.activeJobs) {
-    globalAny.activeJobs = new Set();
+    globalAny.activeJobs = new Set<string>();
   }
 
   if (globalAny.activeJobs.has(identifier)) {

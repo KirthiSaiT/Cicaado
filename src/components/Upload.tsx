@@ -89,6 +89,104 @@ function ToolResultCard({ tool, result }: ToolResultCardProps) {
     );
   }
 
+  // Handle stegdetect results
+  if (tool === 'stegdetect' && typeof result === 'string') {
+    const isClean = result.toLowerCase().includes('no anomalies') || result.toLowerCase().includes('negative') || result.trim() === '';
+    const lines = result.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    
+    return (
+      <div className={`bg-zinc-900 border ${isClean ? 'border-zinc-700' : 'border-amber-700/50'} rounded-xl p-6 shadow-lg`}>
+        <h3 className={`${isClean ? 'text-lime-400' : 'text-amber-400'} text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${isClean ? 'bg-lime-400' : 'bg-amber-400'} animate-pulse`}></span>
+          Stegdetect JPEG Scan
+        </h3>
+        
+        {isClean ? (
+          <div className="p-4 bg-green-900/10 border border-green-700/30 rounded-lg text-green-300">
+            ✅ No immediate steganography anomalies detected.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-900/20 border border-amber-700/40 rounded-lg text-amber-300">
+              ⚠️ Anomalies or potential signatures detected inside the JPEG structure!
+            </div>
+            <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4 font-mono">
+              {lines.join('\n')}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Handle outguess results
+  if (tool === 'outguess' && result && typeof result === 'object') {
+    interface OutguessResult {
+      extracted: boolean;
+      payload: string | null;
+      message: string;
+    }
+    const outguessResult = result as OutguessResult;
+    
+    return (
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+          Outguess Default-Key Scan
+        </h3>
+        
+        {outguessResult.extracted ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-green-900/30 border border-green-700/50 rounded-lg">
+              <h4 className="text-green-400 font-bold mb-2">🔓 Outguess Payload Recovered!</h4>
+              <p className="text-green-300 text-sm">Extracted using default/empty key.</p>
+            </div>
+            
+            <div>
+              <h4 className="text-lime-400 font-bold mb-2">Extracted Data:</h4>
+              <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4 font-mono">
+                {outguessResult.payload}
+              </pre>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400">
+            ℹ️ {outguessResult.message || "No steganography extracted using a blank password."}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Handle tesseract OCR results
+  if (tool === 'tesseract_ocr' && typeof result === 'string') {
+    const hasText = !result.toLowerCase().includes('no readable visual text') && result.trim().length > 0;
+    
+    return (
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
+        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
+          Tesseract OCR Engine
+        </h3>
+        
+        {hasText ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-lime-900/10 border border-lime-700/20 rounded-lg text-lime-300 text-sm">
+              📝 Visual printed text extracted from the image:
+            </div>
+            <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4 font-mono select-all">
+              {result}
+            </pre>
+          </div>
+        ) : (
+          <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-500">
+            {result}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (tool === 'hashes' && typeof result === 'string') {
     const lines = result.split('\n').filter(l => l.trim() !== '' && !l.includes('/tmp/')); // filter out the messy file paths if possible, or just extract hash
     return (
