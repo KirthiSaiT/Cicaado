@@ -111,21 +111,32 @@ RUN gem install zsteg -v 0.2.10 --no-document
 # Verify zsteg works
 RUN ruby -v && gem list zsteg
 
-# 12. Install Python dependencies (stego + recon)
+# 12. Additional CTF forensic tools
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        xxd \
+        zbar-tools \
+        imagemagick \
+        sox \
+        ffmpeg \
+        ssdeep \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# jsteg — Go-based JPEG LSB steganography detector
+RUN go install github.com/lukechampine/jsteg/cmd/jsteg@latest || \
+    echo "jsteg install failed, continuing without it"
+
+# 13. Install Python dependencies (stego + recon)
 RUN pip install --no-cache-dir flask flask-cors pillow pymongo dnspython colorama requests beautifulsoup4 shodan boto3 google-search-results python-whois gunicorn
+
+# 14. stegoveritas — comprehensive CTF steg checker (separate layer for cache)
+RUN pip install --no-cache-dir stegoveritas || echo "stegoveritas install failed, continuing without it"
 
 # Create app directory
 WORKDIR /app
 
-# Create wordlists directory
-RUN mkdir -p /processor/wordlists
-
-# Download rockyou.txt
-RUN wget -q -O /processor/wordlists/rockyou.txt \
-        https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt || \
-    wget -q -O /processor/wordlists/rockyou.txt \
-        https://github.com/danielmiessler/SecLists/raw/master/Passwords/Leaked-Databases/rockyou.txt.tar.gz || \
-    echo "Warning: rockyou.txt unavailable — stegseek will use built-in fallback dict"
+# stegseek has rockyou.txt built into the binary — no external download needed
 
 # Copy application files
 COPY . .

@@ -4,9 +4,11 @@ import tempfile
 import os
 import subprocess
 import base64
-from PIL import Image
+import json
+import uuid
 import shutil
 import mimetypes
+from PIL import Image
 from pymongo import MongoClient
 import gridfs
 from bson.objectid import ObjectId
@@ -132,46 +134,21 @@ def analyze_stegsolve(image_path):
         results.append(error_msg)
     return results
 
-def crack_steghide_password_with_stegseek(image_path, wordlist_path="/processor/wordlists/rockyou.txt"):
-    """Attempt to crack steghide password using StegSeek with a wordlist."""
+def crack_steghide_password_with_stegseek(image_path):
+    """Crack steghide password using StegSeek's built-in rockyou.txt dictionary."""
     if not is_tool_installed("stegseek"):
         return "StegSeek tool is not installed or not available in PATH"
-    
-    # Check if file supports steghide (JPEG or BMP)
+
     if not image_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
         return "Steghide only works with JPEG and BMP files"
-    
-    # Check if wordlist exists
-    if not os.path.exists(wordlist_path):
-        return f"Wordlist not found: {wordlist_path}"
-    
+
     try:
-        # Create a unique output file path for extracted data
-        import uuid
         unique_id = str(uuid.uuid4())[:8]
         extracted_file_path = f"/tmp/stegseek_output_{unique_id}.txt"
-        
-        # Debug: Check file properties
-        print(f"[DEBUG] Image file path: {image_path}")
-        print(f"[DEBUG] Image file size: {os.path.getsize(image_path)} bytes")
-        print(f"[DEBUG] Image file extension: {os.path.splitext(image_path)[1]}")
-        
-        # Debug: Verify this is a valid image file
-        try:
-            from PIL import Image
-            img = Image.open(image_path)
-            print(f"[DEBUG] Image dimensions: {img.size}")
-            print(f"[DEBUG] Image mode: {img.mode}")
-            img.close()
-            print(f"[DEBUG] File verified as valid image")
-        except Exception as e:
-            print(f"[DEBUG] Warning: Image validation failed: {e}")
-            # Continue anyway as the steganalysis tools might still work
-        
-        # Run StegSeek with the wordlist
-        # StegSeek command: stegseek -q <image_file> <wordlist> [<output_file>]
-        cmd = f"stegseek -q '{image_path}' '{wordlist_path}' '{extracted_file_path}'"
-        print(f"[DEBUG] Running StegSeek command: {cmd}")
+
+        # No wordlist arg — stegseek uses its built-in rockyou.txt
+        cmd = f"stegseek -q '{image_path}' '{extracted_file_path}'"
+        print(f"[DEBUG] Running StegSeek: {cmd}")
         
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)  # 5 minute timeout
         output = result.stdout + result.stderr
@@ -279,15 +256,11 @@ def crack_steghide_password_with_stegseek(image_path, wordlist_path="/processor/
         }
 
 def crack_steghide_password(image_path):
-    """Attempt to crack steghide password using a dictionary attack."""
-    # First try StegSeek if available and wordlist exists
-    wordlist_path = "/processor/wordlists/rockyou.txt"
-    if is_tool_installed("stegseek") and os.path.exists(wordlist_path):
-        result = crack_steghide_password_with_stegseek(image_path, wordlist_path)
-        # If StegSeek found a password, return the result
+    """Attempt to crack steghide password using StegSeek then a fallback dict."""
+    if is_tool_installed("stegseek"):
+        result = crack_steghide_password_with_stegseek(image_path)
         if isinstance(result, dict) and result.get("password_found"):
             return result
-        # If StegSeek didn't find a password, fall back to the basic dictionary attack
     
     if not is_tool_installed("steghide"):
         return "Steghide tool is not installed or not available in PATH"
@@ -469,7 +442,6 @@ def run_outguess(image_path):
     if not image_path.lower().endswith(('.jpg', '.jpeg')):
         return "Outguess only operates on JPEG files"
         
-    import uuid
     unique_id = str(uuid.uuid4())[:8]
     output_path = f"/tmp/outguess_output_{unique_id}.txt"
     
@@ -532,6 +504,125 @@ def run_outguess(image_path):
             "payload": None,
             "message": f"Outguess execution failed: {str(e)}"
         }
+
+def run_file_command(file_path):
+    """Identify file type from magic bytes."""
+    try:
+        result = subprocess.run(f'file -b "{file_path}"', shell=True, capture_output=True, text=True, timeout=10)
+        return (result.stdout + result.stderr).strip() or "Unknown file type"
+    except Exception as e:
+        return f"file command failed: {str(e)}"
+
+def run_xxd(file_path):
+    """Hex dump first 512 bytes of the file."""
+    try:
+        result = subprocess.run(f'xxd "{file_path}" | head -32', shell=True, capture_output=True, text=True, timeout=15)
+        return (result.stdout + result.stderr).strip() or "No output"
+    except Exception as e:
+        return f"xxd failed: {str(e)}"
+
+def run_ssdeep(file_path):
+    """Compute fuzzy hash using ssdeep."""
+    if not is_tool_installed("ssdeep"):
+        return "ssdeep is not installed"
+    try:
+        result = subprocess.run(f'ssdeep "{file_path}"', shell=True, capture_output=True, text=True, timeout=15)
+        return (result.stdout + result.stderr).strip() or "No output"
+    except Exception as e:
+        return f"ssdeep failed: {str(e)}"
+
+def run_zbarimg(file_path):
+    """Detect QR codes and barcodes."""
+    if not is_tool_installed("zbarimg"):
+        return {"found": False, "data": None, "message": "zbarimg is not installed"}
+    try:
+        result = subprocess.run(f'zbarimg --quiet --raw "{file_path}"', shell=True, capture_output=True, text=True, timeout=30)
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode == 0 and output:
+            return {"found": True, "data": output, "message": "QR code / barcode detected!"}
+        return {"found": False, "data": None, "message": "No QR codes or barcodes found."}
+    except subprocess.TimeoutExpired:
+        return {"found": False, "data": None, "message": "zbarimg timed out"}
+    except Exception as e:
+        return {"found": False, "data": None, "message": f"zbarimg failed: {str(e)}"}
+
+def run_identify(file_path):
+    """Run ImageMagick identify for detailed image metadata."""
+    if not is_tool_installed("identify"):
+        return "ImageMagick identify is not installed"
+    try:
+        result = subprocess.run(f'identify -verbose "{file_path}" 2>&1', shell=True, capture_output=True, text=True, timeout=30)
+        output = result.stdout.strip()
+        # Trim verbose output to the most useful fields
+        useful = []
+        keywords = ["Image:", "Format:", "Geometry:", "Resolution:", "Print size:", "Colorspace:", "Type:",
+                    "Depth:", "Channel depth:", "Channel statistics:", "Colors:", "Rendering intent:",
+                    "Gamma:", "Background color:", "Comment:", "Profile-", "Compression:", "Quality:",
+                    "Orientation:", "Properties:", "Artifacts:", "Tainted:", "Filesize:", "Number pixels:"]
+        for line in output.split('\n'):
+            if any(kw.lower() in line.lower() for kw in keywords):
+                useful.append(line)
+        return '\n'.join(useful).strip() if useful else output[:3000]
+    except subprocess.TimeoutExpired:
+        return "identify timed out"
+    except Exception as e:
+        return f"identify failed: {str(e)}"
+
+def run_jsteg(file_path):
+    """Check for JPEG LSB steganography using jsteg."""
+    if not is_tool_installed("jsteg"):
+        return {"found": False, "data": None, "message": "jsteg is not installed"}
+    try:
+        result = subprocess.run(f'jsteg reveal "{file_path}"', shell=True, capture_output=True, text=True, timeout=30)
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode == 0 and output and "no hidden" not in output.lower():
+            return {"found": True, "data": output, "message": "jsteg found hidden data!"}
+        return {"found": False, "data": None, "message": output or "No hidden data found by jsteg."}
+    except subprocess.TimeoutExpired:
+        return {"found": False, "data": None, "message": "jsteg timed out"}
+    except Exception as e:
+        return {"found": False, "data": None, "message": f"jsteg failed: {str(e)}"}
+
+def run_stegoveritas(file_path):
+    """Run StegOveritas comprehensive CTF steg checker."""
+    if not is_tool_installed("stegoveritas"):
+        return "stegoveritas is not installed"
+    uid = str(uuid.uuid4())[:8]
+    out_dir = f"/tmp/sv_{uid}"
+    try:
+        cmd = f'stegoveritas -meta -imageTransform -colorMap -trailing -extractLSB -out "{out_dir}" "{file_path}" 2>&1'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=180)
+        output = (result.stdout + result.stderr).strip()
+        if os.path.exists(out_dir):
+            shutil.rmtree(out_dir, ignore_errors=True)
+        return output or "StegOveritas found no anomalies."
+    except subprocess.TimeoutExpired:
+        if os.path.exists(out_dir):
+            shutil.rmtree(out_dir, ignore_errors=True)
+        return "stegoveritas timed out after 180s"
+    except Exception as e:
+        return f"stegoveritas failed: {str(e)}"
+
+def run_sox_spectrogram(file_path):
+    """Generate audio spectrogram PNG from WAV/MP3/FLAC using sox."""
+    if not is_tool_installed("sox"):
+        return {"image": None, "message": "sox is not installed"}
+    uid = str(uuid.uuid4())[:8]
+    out_png = f"/tmp/spectrogram_{uid}.png"
+    try:
+        cmd = f'sox "{file_path}" -n spectrogram -o "{out_png}" 2>&1'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+        if os.path.exists(out_png) and os.path.getsize(out_png) > 0:
+            with open(out_png, 'rb') as f:
+                img_b64 = base64.b64encode(f.read()).decode('utf-8')
+            os.remove(out_png)
+            return {"image": img_b64, "message": "Spectrogram generated — check for text or patterns hidden in frequency bands!"}
+        output = (result.stdout + result.stderr).strip()
+        return {"image": None, "message": f"Spectrogram generation failed: {output}"}
+    except subprocess.TimeoutExpired:
+        return {"image": None, "message": "sox timed out after 60s"}
+    except Exception as e:
+        return {"image": None, "message": f"sox failed: {str(e)}"}
 
 def get_file_extension_from_mime(content_type, original_filename):
     """Get appropriate file extension based on content type and original filename"""
@@ -722,10 +813,12 @@ def process():
                     yield json.dumps({"status": "progress", "message": "Starting analysis...", "tool": "init"}) + "\n"
                 
                 tools = {
-                    "hashes": f"echo 'MD5:' && md5sum '{local_path}' && echo '\\nSHA1:' && sha1sum '{local_path}' && echo '\\nSHA256:' && sha256sum '{local_path}'",
-                    "cat": f"cat '{local_path}'",
-                    "strings": f"strings -n 4 '{local_path}' || echo 'Strings command failed or no output'",
-                    "binwalk": f"binwalk '{local_path}'"
+                    "file_type": None,  # handled via run_file_command
+                    "hashes": f"printf 'MD5:\\n' && md5sum '{local_path}' && printf '\\nSHA1:\\n' && sha1sum '{local_path}' && printf '\\nSHA256:\\n' && sha256sum '{local_path}'",
+                    "xxd": None,        # handled via run_xxd
+                    "strings": f"strings -n 8 '{local_path}' || echo 'Strings command failed or no output'",
+                    "binwalk": f"binwalk '{local_path}'",
+                    "ssdeep": None,     # handled via run_ssdeep
                 }
                 
                 if is_tool_installed("foremost"):
@@ -745,12 +838,18 @@ def process():
                     print(f"[DEBUG] Running tool: {tool}")
                     if stream_output:
                         yield json.dumps({"status": "progress", "message": f"Running {tool}...", "tool": tool}) + "\n"
-                    
-                    if tool == "zsteg" and cmd == "zsteg_custom":
+
+                    if tool == "file_type":
+                        results[tool] = run_file_command(local_path)
+                    elif tool == "xxd":
+                        results[tool] = run_xxd(local_path)
+                    elif tool == "ssdeep":
+                        results[tool] = run_ssdeep(local_path)
+                    elif tool == "zsteg" and cmd == "zsteg_custom":
                         results[tool] = run_zsteg_command(local_path)
                     else:
                         results[tool] = run_command(cmd)
-                        
+
                     if stream_output:
                         yield json.dumps({"status": "progress", "message": f"Finished {tool}", "tool": tool, "partial_result": results[tool]}) + "\n"
                     print(f"[DEBUG] Finished tool: {tool}")
@@ -795,7 +894,39 @@ def process():
                     print("[DEBUG] Finished Tesseract OCR analysis")
                     if stream_output:
                         yield json.dumps({"status": "progress", "message": "Finished tesseract_ocr", "tool": "tesseract_ocr", "partial_result": results["tesseract_ocr"]}) + "\n"
-                
+
+                # zbarimg — QR code / barcode detection (all images)
+                if local_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running zbarimg (QR/barcode scan)...", "tool": "zbarimg"}) + "\n"
+                    results["zbarimg"] = run_zbarimg(local_path)
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished zbarimg", "tool": "zbarimg", "partial_result": results["zbarimg"]}) + "\n"
+
+                # identify — ImageMagick detailed image metadata (all images)
+                if local_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff')):
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running identify...", "tool": "identify"}) + "\n"
+                    results["identify"] = run_identify(local_path)
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished identify", "tool": "identify", "partial_result": results["identify"]}) + "\n"
+
+                # jsteg — JPEG LSB steganography detector
+                if local_path.lower().endswith(('.jpg', '.jpeg')):
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running jsteg (JPEG LSB check)...", "tool": "jsteg"}) + "\n"
+                    results["jsteg"] = run_jsteg(local_path)
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished jsteg", "tool": "jsteg", "partial_result": results["jsteg"]}) + "\n"
+
+                # stegoveritas — comprehensive CTF steg checker (images)
+                if local_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Running stegoveritas (may take ~30s)...", "tool": "stegoveritas"}) + "\n"
+                    results["stegoveritas"] = run_stegoveritas(local_path)
+                    if stream_output:
+                        yield json.dumps({"status": "progress", "message": "Finished stegoveritas", "tool": "stegoveritas", "partial_result": results["stegoveritas"]}) + "\n"
+
                 if local_path and os.path.exists(local_path):
                     try:
                         os.unlink(local_path)
@@ -809,7 +940,6 @@ def process():
 
         if stream_output:
             from flask import Response, stream_with_context
-            import json
             return Response(stream_with_context(generate_results()), mimetype='application/x-ndjson')
         else:
             # Consume generator for non-streaming response

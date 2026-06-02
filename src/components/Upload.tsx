@@ -1,17 +1,10 @@
 import { useState, useEffect } from "react";
 import { FileUpload } from "@/components/ui/file-upload";
-import Image from 'next/image';
 
 // ToolResultCard: a separate component for each tool's output
 type AnalysisResult = {
   [tool: string]: string | object | undefined;
 };
-
-interface StegsolveResultItem {
-  mode: string;
-  image?: string;
-  error?: string;
-}
 
 interface SteghideCrackResult {
   password_found: boolean;
@@ -20,36 +13,49 @@ interface SteghideCrackResult {
   message: string;
 }
 
+interface ZbarimgResult { found: boolean; data: string | null; message: string; }
+interface JstegResult { found: boolean; data: string | null; message: string; }
+
 type ToolResultCardProps = { tool: string; result: string | object | undefined };
 function ToolResultCard({ tool, result }: ToolResultCardProps) {
-  if (tool === 'stegsolve' && Array.isArray(result)) {
+  // QR code / barcode scan
+  if (tool === 'zbarimg' && result && typeof result === 'object') {
+    const r = result as ZbarimgResult;
     return (
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
-        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span>
-          {tool}
+      <div className={`bg-zinc-900 border ${r.found ? 'border-green-600' : 'border-zinc-700'} rounded-xl p-6 shadow-lg`}>
+        <h3 className={`${r.found ? 'text-green-400' : 'text-lime-400'} text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${r.found ? 'bg-green-400' : 'bg-lime-400'} animate-pulse`}></span>
+          QR Code / Barcode Scan
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {result.length === 0 && <div className="text-gray-400 col-span-4">No bit plane/LSB images found.</div>}
-          {(result as StegsolveResultItem[]).map((item, idx) => (
-            <div key={idx} className="flex flex-col items-center">
-              <div className="text-xs text-lime-300 mb-1 text-center">{item.mode}</div>
-              {item.image ? (
-                <Image
-                  src={`data:image/png;base64,${item.image}`}
-                  alt={item.mode}
-                  width={96}
-                  height={96}
-                  className="w-24 h-24 object-contain border border-zinc-700 rounded mb-1 bg-black"
-                  loader={({ src }) => src}
-                  unoptimized
-                />
-              ) : (
-                <div className="w-24 h-24 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-gray-500">No image</div>
-              )}
-            </div>
-          ))}
-        </div>
+        {r.found ? (
+          <div className="space-y-3">
+            <div className="p-3 bg-green-900/30 border border-green-700/50 rounded-lg text-green-400 font-bold">🎯 {r.message}</div>
+            <pre className="text-green-300 whitespace-pre-wrap bg-black/80 rounded p-4 text-sm font-mono select-all">{r.data}</pre>
+          </div>
+        ) : (
+          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400">ℹ️ {r.message}</div>
+        )}
+      </div>
+    );
+  }
+
+  // jsteg JPEG LSB check
+  if (tool === 'jsteg' && result && typeof result === 'object') {
+    const r = result as JstegResult;
+    return (
+      <div className={`bg-zinc-900 border ${r.found ? 'border-green-600' : 'border-zinc-700'} rounded-xl p-6 shadow-lg`}>
+        <h3 className={`${r.found ? 'text-green-400' : 'text-lime-400'} text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${r.found ? 'bg-green-400' : 'bg-lime-400'} animate-pulse`}></span>
+          jsteg JPEG LSB Check
+        </h3>
+        {r.found ? (
+          <div className="space-y-3">
+            <div className="p-3 bg-green-900/30 border border-green-700/50 rounded-lg text-green-400 font-bold">🔓 {r.message}</div>
+            <pre className="text-green-300 whitespace-pre-wrap bg-black/80 rounded p-4 text-sm font-mono select-all">{r.data}</pre>
+          </div>
+        ) : (
+          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400">ℹ️ {r.message}</div>
+        )}
       </div>
     );
   }
@@ -246,7 +252,7 @@ function ToolResultCard({ tool, result }: ToolResultCardProps) {
 }
 
 export default function Upload({ onImageUpload }: { onImageUpload?: (file: File, url: string) => void } = {}) {
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; url: string; key?: string } | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; url: string; key?: string; size?: number } | null>(null);
   const [fileUploadKey, setFileUploadKey] = useState(Date.now());
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -275,7 +281,7 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
       const data = await res.json();
 
       if (res.ok && data.url && data.key) {
-        const uploaded = { name: files[0].name, url: data.url, key: data.key };
+        const uploaded = { name: files[0].name, url: data.url, key: data.key, size: files[0].size };
         setUploadedFile(uploaded);
         localStorage.setItem("lastUploadedFile", JSON.stringify(uploaded));
         if (onImageUpload && isImage(files[0].name)) {
@@ -339,17 +345,21 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
         
         const lines = streamData.split('\n');
         streamData = lines.pop() || "";
-        
+
+        let streamError = false;
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             try {
               const parsed = JSON.parse(line.substring(6));
-              
+
               if (parsed.error) {
-                 setAnalysisError(parsed.error);
-                 break;
+                setAnalysisError(parsed.error);
+                setIsAnalysing(false);
+                setAnalysisStatus("");
+                streamError = true;
+                break;
               }
-              
+
               if (parsed.status === "progress") {
                 setAnalysisStatus(parsed.message);
                 if (parsed.partial_result && parsed.tool) {
@@ -364,6 +374,7 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
             }
           }
         }
+        if (streamError) break;
       }
     } catch (err: unknown) {
       console.error(err);
@@ -388,9 +399,22 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
     return "📁";
   };
 
-  const getFileSizeDisplay = () => "Size: Unknown";
+  const getFileSizeDisplay = () => {
+    if (!uploadedFile?.size) return "";
+    const bytes = uploadedFile.size;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
-  const clearUploadedFile = () => {
+  const clearUploadedFile = async () => {
+    if (uploadedFile?.key) {
+      try {
+        await fetch(`/api/upload?key=${uploadedFile.key}`, { method: "DELETE" });
+      } catch {
+        // best-effort delete; proceed with local cleanup regardless
+      }
+    }
     setUploadedFile(null);
     setAnalysisResult(null);
     setAnalysisError(null);
@@ -461,7 +485,7 @@ export default function Upload({ onImageUpload }: { onImageUpload?: (file: File,
                 <div>
                   <h3 className="text-amber-400 font-medium mb-1">Security Notice:</h3>
                   <p className="text-gray-300 text-sm">
-                    Files are processed in a secure sandbox environment. No data is stored permanently after analysis.
+                    Files are processed in a sandboxed environment and stored temporarily in MongoDB GridFS. Delete your file after analysis to remove it from storage.
                   </p>
                 </div>
               </div>
