@@ -120,6 +120,8 @@ RUN apt-get update && \
         sox \
         ffmpeg \
         ssdeep \
+        mediainfo \
+        multimon-ng \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

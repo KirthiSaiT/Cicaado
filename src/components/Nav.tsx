@@ -18,6 +18,7 @@ export default function Nav() {
   const navItems = [
     { name: "Home", link: "/" },
     { name: "Forensics", link: "/forensics" },
+    { name: "Audio", link: "/audio" },
     { name: "Stegsolve", link: "/steg" },
     { name: "Recon", link: "/web" },
     { name: "CheatSheet", link: "/cheatsheet" },

@@ -604,25 +604,150 @@ def run_stegoveritas(file_path):
         return f"stegoveritas failed: {str(e)}"
 
 def run_sox_spectrogram(file_path):
-    """Generate audio spectrogram PNG from WAV/MP3/FLAC using sox."""
+    """Generate audio spectrogram PNG. Converts non-WAV formats via ffmpeg first."""
     if not is_tool_installed("sox"):
         return {"image": None, "message": "sox is not installed"}
     uid = str(uuid.uuid4())[:8]
     out_png = f"/tmp/spectrogram_{uid}.png"
+    tmp_wav = None
+    work_file = file_path
+
+    # sox often lacks MP3/OGG/FLAC decoders — use ffmpeg to convert to WAV first
+    if not file_path.lower().endswith('.wav') and is_tool_installed("ffmpeg"):
+        tmp_wav = f"/tmp/sox_conv_{uid}.wav"
+        conv = subprocess.run(
+            f'ffmpeg -y -i "{file_path}" -ar 44100 -ac 2 "{tmp_wav}" 2>&1',
+            shell=True, capture_output=True, text=True, timeout=30
+        )
+        if os.path.exists(tmp_wav) and os.path.getsize(tmp_wav) > 0:
+            work_file = tmp_wav
+
     try:
-        cmd = f'sox "{file_path}" -n spectrogram -o "{out_png}" 2>&1'
+        cmd = f'sox "{work_file}" -n spectrogram -o "{out_png}" 2>&1'
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
         if os.path.exists(out_png) and os.path.getsize(out_png) > 0:
             with open(out_png, 'rb') as f:
                 img_b64 = base64.b64encode(f.read()).decode('utf-8')
             os.remove(out_png)
+            if tmp_wav and os.path.exists(tmp_wav):
+                try: os.remove(tmp_wav)
+                except: pass
             return {"image": img_b64, "message": "Spectrogram generated — check for text or patterns hidden in frequency bands!"}
         output = (result.stdout + result.stderr).strip()
+        if tmp_wav and os.path.exists(tmp_wav):
+            try: os.remove(tmp_wav)
+            except: pass
         return {"image": None, "message": f"Spectrogram generation failed: {output}"}
     except subprocess.TimeoutExpired:
+        if tmp_wav and os.path.exists(tmp_wav):
+            try: os.remove(tmp_wav)
+            except: pass
         return {"image": None, "message": "sox timed out after 60s"}
     except Exception as e:
+        if tmp_wav and os.path.exists(tmp_wav):
+            try: os.remove(tmp_wav)
+            except: pass
         return {"image": None, "message": f"sox failed: {str(e)}"}
+
+def run_ffmpeg_info(file_path):
+    """Extract audio/video codec, bitrate, sample rate, channels via ffmpeg."""
+    if not is_tool_installed("ffmpeg"):
+        return "ffmpeg is not installed"
+    try:
+        result = subprocess.run(
+            f'ffmpeg -i "{file_path}" 2>&1',
+            shell=True, capture_output=True, text=True, timeout=15
+        )
+        # ffmpeg writes stream info to stderr; return code 1 is normal (no output file)
+        return (result.stdout + result.stderr).strip() or "No ffmpeg output"
+    except subprocess.TimeoutExpired:
+        return "ffmpeg timed out"
+    except Exception as e:
+        return f"ffmpeg failed: {str(e)}"
+
+def run_sox_info(file_path):
+    """Get sample rate, channels, bit depth, duration. Converts non-WAV via ffmpeg first."""
+    if not is_tool_installed("sox"):
+        return "sox is not installed"
+    uid = str(uuid.uuid4())[:8]
+    tmp_wav = None
+    work_file = file_path
+    if not file_path.lower().endswith('.wav') and is_tool_installed("ffmpeg"):
+        tmp_wav = f"/tmp/soxinfo_{uid}.wav"
+        subprocess.run(
+            f'ffmpeg -y -i "{file_path}" -ar 44100 -ac 2 "{tmp_wav}" 2>&1',
+            shell=True, capture_output=True, text=True, timeout=30
+        )
+        if os.path.exists(tmp_wav) and os.path.getsize(tmp_wav) > 0:
+            work_file = tmp_wav
+    try:
+        result = subprocess.run(
+            f'sox --info "{work_file}" 2>&1',
+            shell=True, capture_output=True, text=True, timeout=15
+        )
+        if tmp_wav and os.path.exists(tmp_wav):
+            try: os.remove(tmp_wav)
+            except: pass
+        return (result.stdout + result.stderr).strip() or "No output from sox --info"
+    except subprocess.TimeoutExpired:
+        if tmp_wav and os.path.exists(tmp_wav):
+            try: os.remove(tmp_wav)
+            except: pass
+        return "sox --info timed out"
+    except Exception as e:
+        return f"sox --info failed: {str(e)}"
+
+def run_mediainfo(file_path):
+    """Run mediainfo for comprehensive container and stream metadata."""
+    if not is_tool_installed("mediainfo"):
+        return "mediainfo is not installed"
+    try:
+        result = subprocess.run(
+            f'mediainfo "{file_path}" 2>&1',
+            shell=True, capture_output=True, text=True, timeout=20
+        )
+        return (result.stdout + result.stderr).strip() or "No mediainfo output"
+    except subprocess.TimeoutExpired:
+        return "mediainfo timed out"
+    except Exception as e:
+        return f"mediainfo failed: {str(e)}"
+
+def run_dtmf_detect(file_path):
+    """Detect DTMF phone tones using multimon-ng. Uses ffmpeg for format conversion."""
+    if not is_tool_installed("multimon-ng"):
+        return "multimon-ng is not installed"
+    if not is_tool_installed("ffmpeg"):
+        return "ffmpeg is not installed (required for audio conversion)"
+    uid = str(uuid.uuid4())[:8]
+    raw_path = f"/tmp/dtmf_{uid}.raw"
+    try:
+        # ffmpeg → 22050 Hz mono signed 16-bit little-endian raw (works for all formats)
+        conv_cmd = f'ffmpeg -y -i "{file_path}" -ar 22050 -ac 1 -f s16le "{raw_path}" 2>&1'
+        conv_res = subprocess.run(conv_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if not os.path.exists(raw_path) or os.path.getsize(raw_path) == 0:
+            return f"Audio conversion failed: {(conv_res.stdout + conv_res.stderr).strip()[:200]}"
+
+        mmng_cmd = f'multimon-ng -t raw -a DTMF "{raw_path}" 2>&1'
+        result = subprocess.run(mmng_cmd, shell=True, capture_output=True, text=True, timeout=30)
+
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+
+        output = (result.stdout + result.stderr).strip()
+        if not output or "DTMF:" not in output:
+            return "No DTMF tones detected."
+        return output
+    except subprocess.TimeoutExpired:
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+        return "DTMF detection timed out"
+    except Exception as e:
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+        return f"DTMF detection failed: {str(e)}"
 
 def get_file_extension_from_mime(content_type, original_filename):
     """Get appropriate file extension based on content type and original filename"""
@@ -826,13 +951,14 @@ def process():
                 else:
                     tools["foremost"] = "echo 'Foremost tool is not installed or not available in PATH'"
                     
-                if is_tool_installed("zsteg"):
-                    tools["zsteg"] = "zsteg_custom"
-                else:
-                    tools["zsteg"] = "echo 'Zsteg tool is not installed or not available in PATH'"
-                    
                 tools["exiftool"] = f"exiftool '{local_path}' 2>&1 || echo 'Exiftool failed'"
-                tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
+
+                # zsteg and pngcheck are image-only — skip for audio/other files
+                IMAGE_EXT = ('.png', '.bmp', '.jpg', '.jpeg', '.gif', '.webp', '.tiff')
+                if local_path.lower().endswith(IMAGE_EXT):
+                    if is_tool_installed("zsteg"):
+                        tools["zsteg"] = "zsteg_custom"
+                    tools["pngcheck"] = f"pngcheck '{local_path}' 2>&1 || echo 'PNGCheck failed or not a PNG file'"
                 
                 for tool, cmd in tools.items():
                     print(f"[DEBUG] Running tool: {tool}")
@@ -854,7 +980,7 @@ def process():
                         yield json.dumps({"status": "progress", "message": f"Finished {tool}", "tool": tool, "partial_result": results[tool]}) + "\n"
                     print(f"[DEBUG] Finished tool: {tool}")
 
-                if is_tool_installed("steghide") and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
+                if is_tool_installed("steghide") and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp', '.wav', '.au')):
                     print("[DEBUG] Starting StegSeek password cracking (this may take time)...")
                     if stream_output:
                         yield json.dumps({"status": "progress", "message": "Running steghide_crack (this may take time)...", "tool": "steghide_crack"}) + "\n"
@@ -927,12 +1053,32 @@ def process():
                     if stream_output:
                         yield json.dumps({"status": "progress", "message": "Finished stegoveritas", "tool": "stegoveritas", "partial_result": results["stegoveritas"]}) + "\n"
 
+                # ── Audio-specific tools ────────────────────────────────────────
+                AUDIO_EXTENSIONS = ('.wav', '.mp3', '.ogg', '.flac', '.aac', '.m4a',
+                                    '.mp4', '.au', '.opus', '.wma', '.aiff', '.aif')
+                if local_path.lower().endswith(AUDIO_EXTENSIONS):
+                    audio_tools = [
+                        ("ffmpeg_info",     run_ffmpeg_info),
+                        ("sox_info",        run_sox_info),
+                        ("sox_spectrogram", run_sox_spectrogram),
+                        ("mediainfo",       run_mediainfo),
+                        ("dtmf_detect",     run_dtmf_detect),
+                    ]
+                    for tool_name, tool_fn in audio_tools:
+                        print(f"[DEBUG] Running audio tool: {tool_name}")
+                        if stream_output:
+                            yield json.dumps({"status": "progress", "message": f"Running {tool_name}...", "tool": tool_name}) + "\n"
+                        results[tool_name] = tool_fn(local_path)
+                        if stream_output:
+                            yield json.dumps({"status": "progress", "message": f"Finished {tool_name}", "tool": tool_name, "partial_result": results[tool_name]}) + "\n"
+                        print(f"[DEBUG] Finished audio tool: {tool_name}")
+
                 if local_path and os.path.exists(local_path):
                     try:
                         os.unlink(local_path)
                     except Exception:
                         pass
-                
+
                 if stream_output:
                     yield json.dumps({"status": "complete", "results": results}) + "\n"
                 else:
