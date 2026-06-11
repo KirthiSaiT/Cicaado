@@ -17,7 +17,9 @@ app = Flask(__name__)
 CORS(app)
 
 from routes.recon import recon_bp
+from routes.webctf import webctf_bp
 app.register_blueprint(recon_bp, url_prefix='/api/recon')
+app.register_blueprint(webctf_bp, url_prefix='/api/webctf')
 
 # Connect to MongoDB
 MONGO_URI = os.environ.get('MONGODB_URI')
@@ -490,47 +492,6 @@ def run_xxd(file_path):
     except Exception as e:
         return f"xxd failed: {str(e)}"
 
-def run_wavsteg(file_path):
-    """Extract LSB steganography from WAV files using wavsteg (stego-lsb)."""
-    if not is_tool_installed("wavsteg"):
-        return {"found": False, "data": None, "message": "wavsteg (stego-lsb) is not installed"}
-    if not file_path.lower().endswith('.wav'):
-        return {"found": False, "data": None, "message": "wavsteg only works with WAV files"}
-    uid = str(uuid.uuid4())[:8]
-    out_file = f"/tmp/wavsteg_{uid}.bin"
-    try:
-        for n_lsb in [1, 2]:
-            cmd = f'wavsteg -r -s "{file_path}" -n {n_lsb} -o "{out_file}" -b 5000 2>&1'
-            subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-            if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
-                with open(out_file, 'rb') as f:
-                    raw = f.read()
-                try: os.remove(out_file)
-                except: pass
-                try:
-                    text = raw.decode('utf-8').strip()
-                except UnicodeDecodeError:
-                    try:
-                        text = raw.decode('latin-1').strip()
-                    except Exception:
-                        text = raw.hex()
-                if text:
-                    return {"found": True, "data": text[:600], "message": f"LSB data extracted using {n_lsb} bit(s)!"}
-        if os.path.exists(out_file):
-            try: os.remove(out_file)
-            except: pass
-        return {"found": False, "data": None, "message": "No LSB steganography detected in WAV file."}
-    except subprocess.TimeoutExpired:
-        if os.path.exists(out_file):
-            try: os.remove(out_file)
-            except: pass
-        return {"found": False, "data": None, "message": "wavsteg timed out"}
-    except Exception as e:
-        if os.path.exists(out_file):
-            try: os.remove(out_file)
-            except: pass
-        return {"found": False, "data": None, "message": f"wavsteg failed: {str(e)}"}
-
 def run_morse_detect(file_path):
     """Detect Morse code in audio using multimon-ng MORSE_CW mode."""
     if not is_tool_installed("multimon-ng"):
@@ -683,6 +644,42 @@ def run_sox_spectrogram(file_path):
             try: os.remove(tmp_wav)
             except: pass
         return {"image": None, "message": f"sox failed: {str(e)}"}
+
+def run_rtty_decode(file_path):
+    """Decode RTTY / Baudot signals via multimon-ng (EEA, EIA, CCIR modes)."""
+    if not is_tool_installed("multimon-ng"):
+        return "multimon-ng is not installed"
+    if not is_tool_installed("ffmpeg"):
+        return "ffmpeg is not installed"
+    uid = str(uuid.uuid4())[:8]
+    raw_path = f"/tmp/rtty_{uid}.raw"
+    try:
+        subprocess.run(
+            f'ffmpeg -y -i "{file_path}" -ar 22050 -ac 1 -f s16le "{raw_path}" 2>&1',
+            shell=True, capture_output=True, text=True, timeout=30
+        )
+        if not os.path.exists(raw_path) or os.path.getsize(raw_path) == 0:
+            return "Audio conversion failed"
+        all_output = []
+        # Valid multimon-ng modes for teleprinter signals
+        for mode in ["EEA", "EIA", "CCIR"]:
+            r = subprocess.run(
+                f'multimon-ng -t raw -a {mode} "{raw_path}" 2>&1',
+                shell=True, capture_output=True, text=True, timeout=30
+            )
+            out = (r.stdout + r.stderr).strip()
+            lines = [l for l in out.split('\n') if f"{mode}:" in l]
+            if lines:
+                all_output.append(f"=== {mode} ===\n" + '\n'.join(lines))
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+        return '\n\n'.join(all_output) if all_output else "No RTTY/Baudot signals detected."
+    except Exception as e:
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+        return f"RTTY decode failed: {str(e)}"
 
 def run_ffmpeg_info(file_path):
     """Extract audio/video codec, bitrate, sample rate, channels via ffmpeg."""
@@ -1096,7 +1093,7 @@ def process():
                         ("mediainfo",       run_mediainfo),
                         ("dtmf_detect",     run_dtmf_detect),
                         ("morse_detect",    run_morse_detect),
-                        ("wavsteg",         run_wavsteg),
+                        ("rtty_decode",     run_rtty_decode),
                     ]
                     for tool_name, tool_fn in audio_tools:
                         print(f"[DEBUG] Running audio tool: {tool_name}")

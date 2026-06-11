@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { FileUpload } from "@/components/ui/file-upload";
 
-// ToolResultCard: a separate component for each tool's output
+
 type AnalysisResult = {
   [tool: string]: string | object | undefined;
 };
@@ -40,7 +40,7 @@ const TOOL_LABELS: Record<string, string> = {
   mediainfo:       "MediaInfo",
   dtmf_detect:     "DTMF Tone Detection",
   morse_detect:    "Morse Code Detection",
-  wavsteg:         "WavSteg LSB (WAV)",
+  rtty_decode:     "RTTY / Baudot Decode",
 };
 
 const TOOL_ACCEPTED_TYPES: Record<string, string> = {

@@ -1,141 +1,72 @@
 "use client";
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { FileUpload } from "@/components/ui/file-upload";
+import { Music, X, Loader2, ChevronRight, HelpCircle } from "lucide-react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type AnalysisResult = { [tool: string]: string | object | undefined };
-
-// Deterministic waveform heights using sine composites
-const WAVE_BARS = Array.from({ length: 52 }, (_, i) => ({
-  height: Math.round(14 + Math.abs(Math.sin(i * 0.38)) * 22 + Math.abs(Math.sin(i * 1.1)) * 16 + Math.abs(Math.cos(i * 0.72)) * 10),
-  delay: i * 0.033,
-  colorIdx: i % 3,
-}));
-const BAR_COLORS = [
-  "linear-gradient(to top, #0891b2, #67e8f9)",
-  "linear-gradient(to top, #7c3aed, #c4b5fd)",
-  "linear-gradient(to top, #0e7490, #a5f3fc)",
-];
-
-// ─── Tool result cards (matches forensics page style) ────────────────────────
 
 interface SpectrogramResult { image: string | null; message: string }
 interface SteghideResult    { password_found: boolean; password: string | null; extracted_data: string | null; message: string }
 
 const TOOL_LABELS: Record<string, string> = {
-  file_type:       "File Type Detection",
-  hashes:          "File Hashes & Malware Check",
+  file_type:       "File Type",
+  hashes:          "File Hashes",
   xxd:             "Hex Dump",
   strings:         "Strings",
   binwalk:         "Binwalk",
-  foremost:        "Foremost File Carver",
+  foremost:        "Foremost",
   exiftool:        "ExifTool Metadata",
-  ffmpeg_info:     "FFmpeg Audio Info",
+  ffmpeg_info:     "FFmpeg Info",
   sox_info:        "Sox Audio Info",
   sox_spectrogram: "Spectrogram",
   mediainfo:       "MediaInfo",
-  dtmf_detect:     "DTMF Tone Detection",
-  morse_detect:    "Morse Code Detection",
-  wavsteg:         "WavSteg LSB (WAV)",
-  steghide_crack:  "Steghide Password Crack",
+  dtmf_detect:     "DTMF Tones",
+  morse_detect:    "Morse Code",
+  rtty_decode:     "RTTY / Baudot",
+  steghide_crack:  "Steghide Crack",
 };
 
-const TOOL_ACCEPTED_TYPES: Record<string, string> = {
-  zsteg:          "PNG / BMP",
-  pngcheck:       "PNG",
-  stegdetect:     "JPEG",
-  outguess:       "JPEG",
-  jsteg:          "JPEG",
-  steghide_crack: "JPEG / BMP / WAV / AU",
-  tesseract_ocr:  "PNG / JPEG / BMP / GIF / WEBP",
-  zbarimg:        "PNG / JPEG / BMP / GIF / WEBP",
-  identify:       "PNG / JPEG / BMP / GIF / WEBP / TIFF",
-  stegoveritas:   "PNG / JPEG / BMP / GIF / WEBP",
-  ffmpeg_info:    "Audio / Video files",
-  sox_info:       "Audio files",
-  sox_spectrogram:"Audio files",
-  mediainfo:      "Audio / Video files",
-  dtmf_detect:    "Audio files",
-  morse_detect:   "Audio files",
-  wavsteg:        "WAV files",
-};
-
-function isFileTypeUnsupported(result: unknown): boolean {
-  if (typeof result !== "string") return false;
-  const r = result.toLowerCase();
-  return (
-    r.includes("only works with") ||
-    r.includes("only operates on") ||
-    r.includes("not available for this file type") ||
-    r.includes("only supported") ||
-    r.includes("only work with")
-  );
-}
-
-function isToolNotInstalled(result: unknown): boolean {
+function isNotInstalled(result: unknown): boolean {
   if (typeof result !== "string") return false;
   const r = result.toLowerCase();
   return r.includes("not installed") || r.includes("not available in path");
 }
 
-function ToolResultCard({ tool, result }: { tool: string; result: string | object | undefined }) {
+function isUnsupported(result: unknown): boolean {
+  if (typeof result !== "string") return false;
+  const r = result.toLowerCase();
+  return r.includes("only works with") || r.includes("only operates on") || r.includes("not available for this file type");
+}
+
+// ─── Result card ──────────────────────────────────────────────────────────────
+
+function ToolCard({ tool, result }: { tool: string; result: string | object | undefined }) {
   const label = TOOL_LABELS[tool] ?? tool;
-  const accepted = TOOL_ACCEPTED_TYPES[tool];
 
-  if (isFileTypeUnsupported(result)) {
-    return (
-      <div className="bg-zinc-900 border border-red-900/60 rounded-xl p-5 shadow-lg flex items-start gap-4">
-        <div className="mt-0.5 text-red-500 text-xl shrink-0">⛔</div>
-        <div>
-          <h3 className="text-red-400 font-bold uppercase tracking-wider text-sm mb-1">{label}</h3>
-          <p className="text-red-300 text-sm font-medium">
-            This file type is not supported by <span className="font-mono">{label}</span>.
-          </p>
-          {accepted && (
-            <p className="text-zinc-500 text-xs mt-1">
-              Supported formats: <span className="text-zinc-400 font-mono">{accepted}</span>
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
+  if (isNotInstalled(result)) return (
+    <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-3 opacity-40">
+      <span className="text-xs font-mono text-zinc-500 uppercase tracking-wider w-36 shrink-0">{label}</span>
+      <span className="text-xs text-zinc-600 font-mono">not installed</span>
+    </div>
+  );
 
-  if (isToolNotInstalled(result)) {
-    return (
-      <div className="bg-zinc-900 border border-zinc-700/50 rounded-xl p-5 shadow-lg flex items-start gap-4 opacity-60">
-        <div className="mt-0.5 text-zinc-500 text-xl shrink-0">🔧</div>
-        <div>
-          <h3 className="text-zinc-400 font-bold uppercase tracking-wider text-sm mb-1">{label}</h3>
-          <p className="text-zinc-500 text-sm">Tool not installed in this environment.</p>
-        </div>
-      </div>
-    );
-  }
+  if (isUnsupported(result)) return null;
 
-  // Spectrogram — show the image
+  // Spectrogram
   if (tool === "sox_spectrogram" && result && typeof result === "object") {
     const r = result as SpectrogramResult;
     return (
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
-        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse" />
-          Spectrogram
-        </h3>
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-xl">
+        <p className="text-xs font-mono font-bold uppercase tracking-wider text-primary mb-3">{label}</p>
         {r.image ? (
-          <div className="space-y-3">
-            <p className="text-zinc-400 text-sm">{r.message}</p>
-            <img
-              src={`data:image/png;base64,${r.image}`}
-              alt="Audio Spectrogram"
-              className="w-full rounded-lg border border-zinc-700"
-            />
+          <div className="space-y-2">
+            <img src={`data:image/png;base64,${r.image}`} alt="Spectrogram" className="w-full rounded-lg border border-border" />
+            <p className="text-xs text-muted-foreground font-mono">{r.message}</p>
           </div>
-        ) : (
-          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 text-sm">
-            ℹ️ {r.message}
-          </div>
-        )}
+        ) : <p className="text-xs font-mono text-zinc-500">{r.message}</p>}
       </div>
     );
   }
@@ -144,30 +75,26 @@ function ToolResultCard({ tool, result }: { tool: string; result: string | objec
   if (tool === "steghide_crack" && result && typeof result === "object") {
     const r = result as SteghideResult;
     return (
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
-        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse" />
-          Steghide Password Crack
-        </h3>
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-xl">
+        <p className="text-xs font-mono font-bold uppercase tracking-wider text-primary mb-3">{label}</p>
         {r.password_found ? (
-          <div className="space-y-4">
-            <div className="p-4 bg-green-900/30 border border-green-700/50 rounded-lg">
-              <h4 className="text-green-400 font-bold mb-2">✅ Password Found!</h4>
-              <p className="text-green-300">Password: <span className="font-mono bg-zinc-800 px-2 py-1 rounded">{r.password}</span></p>
+          <div className="space-y-3">
+            <div className="p-3 bg-lime-950/30 border border-lime-800/30 rounded-xl">
+              <p className="text-lime-400 text-xs font-bold font-mono mb-1">Password found</p>
+              <code className="text-lime-200 bg-black/40 px-2 py-0.5 rounded text-sm">{r.password}</code>
             </div>
             {r.extracted_data && (
               <div>
-                <h4 className="text-lime-400 font-bold mb-2">Extracted Data:</h4>
-                <pre className="text-green-300 whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4 font-mono select-all">
+                <p className="text-xs font-mono text-zinc-500 uppercase tracking-wider mb-1">Extracted data</p>
+                <pre className="text-lime-200 text-xs bg-black/40 rounded-xl p-3 max-h-48 overflow-auto whitespace-pre-wrap select-all border border-zinc-800">
                   {r.extracted_data}
                 </pre>
               </div>
             )}
           </div>
         ) : (
-          <div className="p-4 bg-amber-900/30 border border-amber-700/50 rounded-lg">
-            <h4 className="text-amber-400 font-bold mb-2">⚠️ No Password Found</h4>
-            <p className="text-amber-300">{r.message}</p>
+          <div className="p-3 bg-amber-950/20 border border-amber-800/30 rounded-xl">
+            <p className="text-amber-300 text-xs font-mono">{r.message}</p>
           </div>
         )}
       </div>
@@ -178,52 +105,23 @@ function ToolResultCard({ tool, result }: { tool: string; result: string | objec
   if (tool === "hashes" && typeof result === "string") {
     const lines = result.split("\n").filter(l => l.trim() && !l.includes("/tmp/"));
     return (
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 shadow-lg">
-        <h3 className="text-lime-400 text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-lime-400 animate-pulse" />
-          File Hashes & Malware Check
-        </h3>
-        <div className="space-y-3 mt-4">
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-xl">
+        <p className="text-xs font-mono font-bold uppercase tracking-wider text-primary mb-3">{label}</p>
+        <div className="space-y-2">
           {lines.map((line, i) => {
-            const hashMatch = line.match(/([a-fA-F0-9]{32,64})/);
-            if (hashMatch) {
-              return (
-                <div key={i} className="bg-black/80 p-3 rounded flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                  <span className="font-mono text-green-300 break-all">{hashMatch[1]}</span>
-                  <a
-                    href={`https://www.virustotal.com/gui/search/${hashMatch[1]}`}
-                    target="_blank" rel="noreferrer"
-                    className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1"
-                  >
-                    🔍 Check VirusTotal
-                  </a>
-                </div>
-              );
-            }
-            return <div key={i} className="text-zinc-400 text-xs font-bold uppercase mt-4">{line.replace(":", "")}</div>;
+            const m = line.match(/([a-fA-F0-9]{32,64})/);
+            if (m) return (
+              <div key={i} className="flex items-center justify-between bg-black/40 rounded-lg px-3 py-2 border border-zinc-800 gap-3">
+                <code className="font-mono text-green-300 text-xs break-all">{m[1]}</code>
+                <a href={`https://www.virustotal.com/gui/search/${m[1]}`} target="_blank" rel="noreferrer"
+                  className="shrink-0 px-2 py-1 text-xs font-bold bg-blue-900/30 border border-blue-700/40 text-blue-300 rounded-lg hover:bg-blue-900/50 transition-colors">
+                  VT ↗
+                </a>
+              </div>
+            );
+            return <p key={i} className="text-zinc-500 text-xs font-mono uppercase tracking-wider pt-1">{line.replace(":", "")}</p>;
           })}
         </div>
-      </div>
-    );
-  }
-
-  // WavSteg LSB extraction
-  if (tool === "wavsteg" && result && typeof result === "object") {
-    const r = result as { found: boolean; data: string | null; message: string };
-    return (
-      <div className={`bg-zinc-900 border ${r.found ? "border-green-600" : "border-zinc-700"} rounded-xl p-6 shadow-lg`}>
-        <h3 className={`${r.found ? "text-green-400" : "text-lime-400"} text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2`}>
-          <span className={`inline-block w-2 h-2 rounded-full ${r.found ? "bg-green-400" : "bg-lime-400"} animate-pulse`} />
-          WavSteg LSB (WAV)
-        </h3>
-        {r.found ? (
-          <div className="space-y-3">
-            <div className="p-3 bg-green-900/30 border border-green-700/50 rounded-lg text-green-400 font-bold">🔓 {r.message}</div>
-            <pre className="text-green-300 whitespace-pre-wrap bg-black/80 rounded p-4 text-sm font-mono select-all">{r.data}</pre>
-          </div>
-        ) : (
-          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400">ℹ️ {r.message}</div>
-        )}
       </div>
     );
   }
@@ -235,35 +133,31 @@ function ToolResultCard({ tool, result }: { tool: string; result: string | objec
     result.toLowerCase().includes("cannot") ||
     result.includes("Exception")
   );
+  const isEmpty = !result || (typeof result === "string" && result.trim() === "");
+
+  if (isEmpty) return null;
 
   return (
-    <div className={`bg-zinc-900 border ${isError ? "border-red-900/50" : "border-zinc-700"} rounded-xl p-6 shadow-lg`}>
-      <h3 className={`${isError ? "text-red-400" : "text-lime-400"} text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2`}>
-        <span className={`inline-block w-2 h-2 rounded-full ${isError ? "bg-red-500" : "bg-lime-400"} animate-pulse`} />
-        {label} {isError && <span className="text-sm">⚠️ Error</span>}
-      </h3>
-      <pre className={`${isError ? "text-red-300" : "text-green-300"} whitespace-pre-wrap max-h-60 overflow-y-auto text-sm bg-black/80 rounded p-4`}>
-        {result
-          ? typeof result === "string"
-            ? result
-            : JSON.stringify(result, null, 2)
-          : "No output"}
+    <div className={`bg-card border ${isError ? "border-red-900/40" : "border-border"} rounded-2xl p-5 shadow-xl`}>
+      <p className={`text-xs font-mono font-bold uppercase tracking-wider mb-3 ${isError ? "text-red-400" : "text-primary"}`}>
+        {label}
+      </p>
+      <pre className={`${isError ? "text-red-300" : "text-green-300"} text-xs font-mono whitespace-pre-wrap max-h-56 overflow-auto bg-black/40 rounded-xl p-3 border border-zinc-800`}>
+        {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
       </pre>
     </div>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function AudioForensics() {
-  const [uploadedFile, setUploadedFile] = useState<{
-    name: string; url: string; key?: string; size?: number;
-  } | null>(null);
+  const [uploadedFile,   setUploadedFile]   = useState<{ name: string; url: string; key?: string; size?: number } | null>(null);
   const [fileUploadKey,  setFileUploadKey]  = useState(Date.now());
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [analysisError,  setAnalysisError]  = useState<string | null>(null);
   const [isAnalysing,    setIsAnalysing]    = useState(false);
-  const [analysisStatus, setAnalysisStatus] = useState("");
+  const [statusMsg,      setStatusMsg]      = useState("");
 
   const handleFileChange = async (files: File[]) => {
     if (!files.length) return;
@@ -290,7 +184,7 @@ export default function AudioForensics() {
     setIsAnalysing(true);
     setAnalysisResult({});
     setAnalysisError(null);
-    setAnalysisStatus("Starting analysis...");
+    setStatusMsg("Starting analysis…");
 
     try {
       const res = await fetch("/api/run-command", {
@@ -302,8 +196,6 @@ export default function AudioForensics() {
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "Server error");
         setAnalysisError(text);
-        setIsAnalysing(false);
-        setAnalysisStatus("");
         return;
       }
 
@@ -322,29 +214,24 @@ export default function AudioForensics() {
           if (!line.startsWith("data: ")) continue;
           try {
             const parsed = JSON.parse(line.substring(6));
-            if (parsed.error) {
-              setAnalysisError(parsed.error);
-              setIsAnalysing(false);
-              setAnalysisStatus("");
-              break outer;
-            }
+            if (parsed.error) { setAnalysisError(parsed.error); break outer; }
             if (parsed.status === "progress") {
-              setAnalysisStatus(parsed.message ?? "");
-              if (parsed.partial_result && parsed.tool) {
+              setStatusMsg(parsed.message ?? "");
+              if (parsed.partial_result && parsed.tool)
                 setAnalysisResult(prev => ({ ...(prev ?? {}), [parsed.tool]: parsed.partial_result }));
-              }
             } else if (parsed.status === "complete") {
               setAnalysisResult(parsed.results);
-              setAnalysisStatus("");
+              setStatusMsg("");
             }
           } catch { /* skip malformed */ }
         }
       }
     } catch (err) {
       setAnalysisError(err instanceof Error ? err.message : "Analysis failed");
+    } finally {
+      setIsAnalysing(false);
+      setStatusMsg("");
     }
-    setIsAnalysing(false);
-    setAnalysisStatus("");
   };
 
   const clearFile = async () => {
@@ -359,119 +246,141 @@ export default function AudioForensics() {
 
   const fmtSize = (b?: number) => {
     if (!b) return "";
-    if (b < 1024) return `${b} B`;
+    if (b < 1024)    return `${b} B`;
     if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
     return `${(b / 1048576).toFixed(1)} MB`;
   };
 
+  const FORMATS = ["WAV","MP3","FLAC","OGG","M4A","AAC","MP4","AU","OPUS"];
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground pt-24 pb-12 px-4 md:px-8">
+      <div className="max-w-5xl mx-auto">
 
-      {/* ── Waveform Header ──────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden pt-4 pb-10 px-4">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-cyan-500/4 rounded-full blur-3xl" />
-        </div>
-        <div className="max-w-4xl mx-auto text-center relative z-10">
-          <div className="flex items-center justify-center gap-[3px] h-20 mb-6 overflow-hidden">
-            {WAVE_BARS.map((bar, i) => (
-              <motion.div
-                key={i}
-                className="rounded-full flex-shrink-0"
-                style={{
-                  width: "3px",
-                  height: `${bar.height}px`,
-                  background: BAR_COLORS[bar.colorIdx],
-                  originY: 0.5,
-                }}
-                animate={{ scaleY: [0.18, 1, 0.18] }}
-                transition={{
-                  duration: 1.0 + (i % 6) * 0.12,
-                  repeat: Infinity,
-                  delay: bar.delay,
-                  ease: "easeInOut",
-                }}
-              />
-            ))}
-          </div>
-          <h1 className="text-4xl font-bold mb-2">Audio Forensics</h1>
-          <p className="text-lg text-zinc-400 mb-4">
-            Upload an audio file and run the full forensic suite — spectrogram, steghide, metadata, DTMF detection and more.
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="text-center mb-10"
+        >
+          <span className="px-3 py-1 text-xs font-mono font-semibold tracking-wider text-lime-400 bg-lime-950/40 border border-lime-800/30 rounded-full uppercase">
+            Audio Forensics
+          </span>
+          <h1 className="text-4xl md:text-5xl font-extrabold text-white mt-3 mb-3 tracking-tight">
+            Audio <span className="text-lime-400">Analysis</span>
+          </h1>
+          <p className="text-zinc-400 max-w-xl mx-auto text-sm md:text-base">
+            Spectrogram, DTMF, Morse code, RTTY, metadata extraction, steghide cracking and more.
           </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {["WAV", "MP3", "FLAC", "OGG", "M4A", "AAC", "MP4", "AU"].map(fmt => (
-              <span key={fmt} className="px-3 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-full">
-                .{fmt.toLowerCase()}
-              </span>
+          <div className="flex flex-wrap justify-center gap-2 mt-4">
+            {FORMATS.map(f => (
+              <span key={f} className="px-3 py-1 text-xs font-mono bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-full">.{f.toLowerCase()}</span>
             ))}
           </div>
-        </div>
-      </div>
+        </motion.div>
 
-      {/* ── Main content (forensics page layout) ─────────────────────────── */}
-      <main className="container mx-auto px-4 py-8">
-        <FileUpload key={fileUploadKey} onChange={handleFileChange} />
-
-        {uploadedFile && (
-          <div className="mt-8">
-            <h2 className="text-white text-lg font-medium mb-4">Selected File:</h2>
-
-            <div className="bg-slate-800 border border-slate-600 rounded-lg p-4 mb-2">
-              <div className="flex items-center justify-between text-gray-300">
-                <div className="flex items-center space-x-3">
-                  <span>🎵</span>
-                  <span>{uploadedFile.name}</span>
-                </div>
-                <span className="text-sm text-gray-400">{fmtSize(uploadedFile.size)}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={clearFile}
-              className="text-red-400 hover:text-red-600 text-sm mb-4"
+        <AnimatePresence mode="wait">
+          {!uploadedFile ? (
+            /* ── Drop zone ─────────────────────────────────────────────── */
+            <motion.div
+              key="dropzone"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35 }}
+              className="max-w-xl mx-auto"
             >
-              ❌ Delete File
-            </button>
+              <FileUpload key={fileUploadKey} onChange={handleFileChange} />
 
-            <button
-              className="w-full bg-gradient-to-r from-green-500 to-lime-600 hover:from-green-600 hover:to-lime-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-300 shadow-lg mb-4"
-              onClick={handleAnalysis}
-              disabled={isAnalysing}
-            >
-              {isAnalysing ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                  {analysisStatus || "Analysing..."}
-                </span>
-              ) : "Start Audio Analysis"}
-            </button>
-
-            {analysisResult && typeof analysisResult === "object" && (
-              <div className="space-y-8 mt-10">
-                {Object.keys(analysisResult).map(tool => (
-                  <ToolResultCard key={tool} tool={tool} result={analysisResult[tool]} />
-                ))}
-              </div>
-            )}
-
-            {analysisError && (
-              <div className="text-red-500 mt-4">{analysisError}</div>
-            )}
-
-            <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4 mt-8">
-              <div className="flex items-start space-x-3">
-                <div className="text-amber-500 mt-0.5">⚠️</div>
+              <div className="mt-6 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 flex gap-3 text-xs text-zinc-400">
+                <HelpCircle className="w-4 h-4 text-lime-400 shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="text-amber-400 font-medium mb-1">Security Notice:</h3>
-                  <p className="text-gray-300 text-sm">
-                    Files are processed in a sandboxed environment and stored temporarily in MongoDB GridFS. Delete your file after analysis to remove it from storage.
-                  </p>
+                  <span className="text-zinc-200 font-semibold">What gets run:</span>{" "}
+                  FFmpeg metadata, Sox spectrogram, DTMF tone detection, Morse code decoding, RTTY/Baudot signals, file hashes, hex dump, binwalk, exiftool, steghide password cracking.
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-      </main>
+            </motion.div>
+          ) : (
+            /* ── Analysis view ─────────────────────────────────────────── */
+            <motion.div
+              key="analysis"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.35 }}
+              className="space-y-5"
+            >
+              {/* File info bar */}
+              <div className="flex items-center justify-between bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-lime-950/40 border border-lime-800/20 rounded-xl text-lime-400">
+                    <Music className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-200 font-mono truncate max-w-xs">{uploadedFile.name}</p>
+                    <p className="text-xs text-zinc-500">{fmtSize(uploadedFile.size)}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={clearFile}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-zinc-400 hover:text-red-400 bg-zinc-800/50 hover:bg-red-500/10 border border-zinc-700/50 hover:border-red-500/20 rounded-xl transition-all"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Clear
+                </button>
+              </div>
+
+              {/* Run button */}
+              {!analysisResult || Object.keys(analysisResult).length === 0 ? (
+                <button
+                  onClick={handleAnalysis}
+                  disabled={isAnalysing}
+                  className="w-full bg-gradient-to-r from-lime-600 to-green-600 hover:from-lime-700 hover:to-green-700 disabled:opacity-50 text-white font-semibold py-4 rounded-2xl transition-all shadow-lg text-sm"
+                >
+                  {isAnalysing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {statusMsg || "Analysing…"}
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <ChevronRight className="w-4 h-4" />
+                      Run Full Analysis
+                    </span>
+                  )}
+                </button>
+              ) : isAnalysing ? (
+                <div className="w-full flex items-center justify-center gap-2 py-4 text-sm text-zinc-400 font-mono">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {statusMsg}
+                </div>
+              ) : null}
+
+              {/* Error */}
+              {analysisError && (
+                <div className="p-4 bg-red-950/30 border border-red-800/40 rounded-2xl text-red-300 text-sm font-mono">
+                  {analysisError}
+                </div>
+              )}
+
+              {/* Results grid */}
+              {analysisResult && Object.keys(analysisResult).length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                >
+                  {Object.keys(analysisResult).map(tool => (
+                    <ToolCard key={tool} tool={tool} result={analysisResult[tool]} />
+                  ))}
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

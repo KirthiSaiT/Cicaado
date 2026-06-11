@@ -19,11 +19,9 @@ export default function Nav() {
     { name: "Home", link: "/" },
     { name: "Forensics", link: "/forensics" },
     { name: "Audio", link: "/audio" },
+    { name: "Web", link: "/web" },
     { name: "Stegsolve", link: "/steg" },
-    { name: "Recon", link: "/web" },
-    { name: "CheatSheet", link: "/cheatsheet" },
     { name: "GitHub", link: "https://github.com/KirthiSaiT/Cicaado", external: true },
-    { name: "Blog", link: "https://www.linkedin.com/in/kirthi-sai/", external: true },
     { name: "Contact", link: "/contact" },
   ];
 

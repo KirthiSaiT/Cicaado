@@ -15,7 +15,7 @@ export default function RootLayout({
         <body className="min-h-screen bg-background text-foreground">
           <SignedIn>
             <Nav />
-            <main className="pt-20 container mx-auto p-6">
+            <main>
               {children}
             </main>
           </SignedIn>
