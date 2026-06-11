@@ -31,14 +31,7 @@ RUN apt-get update && \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. Java Runtime (Needed for legacy stegsolve.jar)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        default-jdk \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# 4. Stego, Forensics, and Network packages
+# 3. Stego, Forensics, and Network packages
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         exiftool \
@@ -51,7 +44,7 @@ RUN apt-get update && \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 5. OCR libraries (Tesseract)
+# 4. OCR libraries (Tesseract)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         tesseract-ocr \
@@ -59,7 +52,7 @@ RUN apt-get update && \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 6. Go compiler setup (Heavy compiler cached separately)
+# 5. Go compiler setup (Heavy compiler cached separately)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         golang \
@@ -70,7 +63,7 @@ RUN apt-get update && \
 ENV GOPATH=/root/go
 ENV PATH=$PATH:/root/go/bin
 
-# 7. Compile Go Recon tools individually (Compiling one-by-one keeps memory load low and caches each tool)
+# 6. Compile Go Recon tools individually (Compiling one-by-one keeps memory load low and caches each tool)
 RUN go install github.com/projectdiscovery/httpx/cmd/httpx@latest
 RUN go install github.com/lc/gau/v2/cmd/gau@latest
 RUN go install github.com/tomnomnom/gf@latest
@@ -83,7 +76,7 @@ RUN git clone https://github.com/1ndianl33t/Gf-Patterns /tmp/Gf-Patterns && \
     cp /tmp/Gf-Patterns/*.json ~/.gf && \
     rm -rf /tmp/Gf-Patterns
 
-# 8. Install stegseek from GitHub deb
+# 7. Install stegseek from GitHub deb
 RUN (wget -q -O /tmp/stegseek.deb https://github.com/RickdeJager/stegseek/releases/download/v0.6/stegseek_0.6-1.deb && \
     apt-get update -qq && \
     apt-get install -y /tmp/stegseek.deb && \
@@ -91,7 +84,7 @@ RUN (wget -q -O /tmp/stegseek.deb https://github.com/RickdeJager/stegseek/releas
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*) || echo "stegseek install failed, continuing without it"
 
-# 9. Install stegdetect from old Ubuntu releases pool
+# 8. Install stegdetect from old Ubuntu releases pool
 RUN wget -q -O /tmp/stegdetect.deb http://old-releases.ubuntu.com/ubuntu/pool/universe/s/stegdetect/stegdetect_0.6-6_amd64.deb && \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends wamerican && \
@@ -100,18 +93,18 @@ RUN wget -q -O /tmp/stegdetect.deb http://old-releases.ubuntu.com/ubuntu/pool/un
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 10. Install outguess
+# 9. Install outguess
 RUN apt-get update && \
     apt-get install -y --no-install-recommends outguess || \
     echo "outguess not available in repos, continuing without it"
 
-# 11. Install zsteg cleanly with compatible Ruby version
+# 10. Install zsteg cleanly with compatible Ruby version
 RUN gem install zsteg -v 0.2.10 --no-document
 
 # Verify zsteg works
 RUN ruby -v && gem list zsteg
 
-# 12. Additional CTF forensic tools
+# 11. Additional CTF forensic tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         xxd \
@@ -119,9 +112,10 @@ RUN apt-get update && \
         imagemagick \
         sox \
         ffmpeg \
-        ssdeep \
         mediainfo \
         multimon-ng \
+        p7zip-full \
+        libsndfile1-dev \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -129,11 +123,12 @@ RUN apt-get update && \
 RUN go install github.com/lukechampine/jsteg/cmd/jsteg@latest || \
     echo "jsteg install failed, continuing without it"
 
-# 13. Install Python dependencies (stego + recon)
+# 12. Install Python dependencies (stego + recon)
 RUN pip install --no-cache-dir flask flask-cors pillow pymongo dnspython colorama requests beautifulsoup4 shodan boto3 google-search-results python-whois gunicorn
 
-# 14. stegoveritas — comprehensive CTF steg checker (separate layer for cache)
+# 13. stegoveritas + stego-lsb (wavsteg) — separate layers for cache
 RUN pip install --no-cache-dir stegoveritas || echo "stegoveritas install failed, continuing without it"
+RUN pip install --no-cache-dir stego-lsb || echo "stego-lsb install failed, continuing without it"
 
 # Create app directory
 WORKDIR /app
@@ -142,14 +137,6 @@ WORKDIR /app
 
 # Copy application files
 COPY . .
-
-# Download stegsolve.jar
-RUN wget -O /usr/local/bin/stegsolve.jar https://github.com/Giotino/stegsolve/releases/download/v1.0/stegsolve.jar || \
-    wget -O /usr/local/bin/stegsolve.jar https://raw.githubusercontent.com/b3nj5m1n/StegSolve/master/StegSolve.jar || \
-    echo "Could not download stegsolve.jar, continuing without it"
-
-# Set permissions for stegsolve.jar
-RUN chmod +x /usr/local/bin/stegsolve.jar || echo "Could not set permissions for stegsolve.jar"
 
 EXPOSE 5000
 

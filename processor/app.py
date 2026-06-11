@@ -103,37 +103,6 @@ def run_zsteg_command(image_path):
     except Exception as e:
         return f"zsteg execution failed: {str(e)}"
 
-def analyze_stegsolve(image_path):
-    results = []
-    try:
-        # Check if stegsolve.jar exists
-        if not os.path.exists("/usr/local/bin/stegsolve.jar"):
-            return [{"error": "Stegsolve not available"}]
-        
-        modes = [
-            "Red plane 0",
-            "Green plane 0",
-            "Blue plane 0",
-            "LSB of Red plane",
-            "LSB of Green plane",
-            "LSB of Blue plane"
-        ]
-        for mode in modes:
-            cmd = f"java -jar /usr/local/bin/stegsolve.jar -s '{mode}' -o /tmp/stegsolve_out.png '{image_path}'"
-            subprocess.run(cmd, shell=True, capture_output=True)
-            if os.path.exists("/tmp/stegsolve_out.png"):
-                with open("/tmp/stegsolve_out.png", "rb") as f:
-                    img_data = f.read()
-                    results.append({
-                        "mode": mode,
-                        "image": base64.b64encode(img_data).decode('utf-8')
-                    })
-                os.remove("/tmp/stegsolve_out.png")
-    except Exception as e:
-        error_msg = {"error": str(e)}
-        results.append(error_msg)
-    return results
-
 def crack_steghide_password_with_stegseek(image_path):
     """Crack steghide password using StegSeek's built-in rockyou.txt dictionary."""
     if not is_tool_installed("stegseek"):
@@ -521,15 +490,81 @@ def run_xxd(file_path):
     except Exception as e:
         return f"xxd failed: {str(e)}"
 
-def run_ssdeep(file_path):
-    """Compute fuzzy hash using ssdeep."""
-    if not is_tool_installed("ssdeep"):
-        return "ssdeep is not installed"
+def run_wavsteg(file_path):
+    """Extract LSB steganography from WAV files using wavsteg (stego-lsb)."""
+    if not is_tool_installed("wavsteg"):
+        return {"found": False, "data": None, "message": "wavsteg (stego-lsb) is not installed"}
+    if not file_path.lower().endswith('.wav'):
+        return {"found": False, "data": None, "message": "wavsteg only works with WAV files"}
+    uid = str(uuid.uuid4())[:8]
+    out_file = f"/tmp/wavsteg_{uid}.bin"
     try:
-        result = subprocess.run(f'ssdeep "{file_path}"', shell=True, capture_output=True, text=True, timeout=15)
-        return (result.stdout + result.stderr).strip() or "No output"
+        for n_lsb in [1, 2]:
+            cmd = f'wavsteg -r -s "{file_path}" -n {n_lsb} -o "{out_file}" -b 5000 2>&1'
+            subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+            if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
+                with open(out_file, 'rb') as f:
+                    raw = f.read()
+                try: os.remove(out_file)
+                except: pass
+                try:
+                    text = raw.decode('utf-8').strip()
+                except UnicodeDecodeError:
+                    try:
+                        text = raw.decode('latin-1').strip()
+                    except Exception:
+                        text = raw.hex()
+                if text:
+                    return {"found": True, "data": text[:600], "message": f"LSB data extracted using {n_lsb} bit(s)!"}
+        if os.path.exists(out_file):
+            try: os.remove(out_file)
+            except: pass
+        return {"found": False, "data": None, "message": "No LSB steganography detected in WAV file."}
+    except subprocess.TimeoutExpired:
+        if os.path.exists(out_file):
+            try: os.remove(out_file)
+            except: pass
+        return {"found": False, "data": None, "message": "wavsteg timed out"}
     except Exception as e:
-        return f"ssdeep failed: {str(e)}"
+        if os.path.exists(out_file):
+            try: os.remove(out_file)
+            except: pass
+        return {"found": False, "data": None, "message": f"wavsteg failed: {str(e)}"}
+
+def run_morse_detect(file_path):
+    """Detect Morse code in audio using multimon-ng MORSE_CW mode."""
+    if not is_tool_installed("multimon-ng"):
+        return "multimon-ng is not installed"
+    if not is_tool_installed("ffmpeg"):
+        return "ffmpeg is not installed (required for audio conversion)"
+    uid = str(uuid.uuid4())[:8]
+    raw_path = f"/tmp/morse_{uid}.raw"
+    try:
+        conv_cmd = f'ffmpeg -y -i "{file_path}" -ar 22050 -ac 1 -f s16le "{raw_path}" 2>&1'
+        conv_res = subprocess.run(conv_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if not os.path.exists(raw_path) or os.path.getsize(raw_path) == 0:
+            return f"Audio conversion failed: {(conv_res.stdout + conv_res.stderr).strip()[:200]}"
+        mmng_cmd = f'multimon-ng -t raw -a MORSE_CW "{raw_path}" 2>&1'
+        result = subprocess.run(mmng_cmd, shell=True, capture_output=True, text=True, timeout=60)
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+        output = (result.stdout + result.stderr).strip()
+        if not output or "MORSE_CW:" not in output:
+            return "No Morse code detected."
+        lines = [l for l in output.split('\n') if "MORSE_CW:" in l]
+        decoded = ' '.join(l.split("MORSE_CW:")[-1].strip() for l in lines)
+        return f"Morse code detected!\n\nDecoded: {decoded}\n\nRaw output:\n{output}"
+    except subprocess.TimeoutExpired:
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+        return "Morse detection timed out"
+    except Exception as e:
+        if os.path.exists(raw_path):
+            try: os.remove(raw_path)
+            except: pass
+        return f"Morse detection failed: {str(e)}"
 
 def run_zbarimg(file_path):
     """Detect QR codes and barcodes."""
@@ -943,7 +978,6 @@ def process():
                     "xxd": None,        # handled via run_xxd
                     "strings": f"strings -n 8 '{local_path}' || echo 'Strings command failed or no output'",
                     "binwalk": f"binwalk '{local_path}'",
-                    "ssdeep": None,     # handled via run_ssdeep
                 }
                 
                 if is_tool_installed("foremost"):
@@ -969,8 +1003,6 @@ def process():
                         results[tool] = run_file_command(local_path)
                     elif tool == "xxd":
                         results[tool] = run_xxd(local_path)
-                    elif tool == "ssdeep":
-                        results[tool] = run_ssdeep(local_path)
                     elif tool == "zsteg" and cmd == "zsteg_custom":
                         results[tool] = run_zsteg_command(local_path)
                     else:
@@ -980,7 +1012,7 @@ def process():
                         yield json.dumps({"status": "progress", "message": f"Finished {tool}", "tool": tool, "partial_result": results[tool]}) + "\n"
                     print(f"[DEBUG] Finished tool: {tool}")
 
-                if is_tool_installed("steghide") and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp', '.wav', '.au')):
+                if (is_tool_installed("stegseek") or is_tool_installed("steghide")) and local_path.lower().endswith(('.jpg', '.jpeg', '.bmp', '.wav', '.au')):
                     print("[DEBUG] Starting StegSeek password cracking (this may take time)...")
                     if stream_output:
                         yield json.dumps({"status": "progress", "message": "Running steghide_crack (this may take time)...", "tool": "steghide_crack"}) + "\n"
@@ -1063,6 +1095,8 @@ def process():
                         ("sox_spectrogram", run_sox_spectrogram),
                         ("mediainfo",       run_mediainfo),
                         ("dtmf_detect",     run_dtmf_detect),
+                        ("morse_detect",    run_morse_detect),
+                        ("wavsteg",         run_wavsteg),
                     ]
                     for tool_name, tool_fn in audio_tools:
                         print(f"[DEBUG] Running audio tool: {tool_name}")

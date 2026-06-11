@@ -30,17 +30,88 @@ const TOOL_LABELS: Record<string, string> = {
   binwalk:         "Binwalk",
   foremost:        "Foremost File Carver",
   exiftool:        "ExifTool Metadata",
-  ssdeep:          "ssdeep Fuzzy Hash",
   ffmpeg_info:     "FFmpeg Audio Info",
   sox_info:        "Sox Audio Info",
   sox_spectrogram: "Spectrogram",
   mediainfo:       "MediaInfo",
   dtmf_detect:     "DTMF Tone Detection",
+  morse_detect:    "Morse Code Detection",
+  wavsteg:         "WavSteg LSB (WAV)",
   steghide_crack:  "Steghide Password Crack",
 };
 
+const TOOL_ACCEPTED_TYPES: Record<string, string> = {
+  zsteg:          "PNG / BMP",
+  pngcheck:       "PNG",
+  stegdetect:     "JPEG",
+  outguess:       "JPEG",
+  jsteg:          "JPEG",
+  steghide_crack: "JPEG / BMP / WAV / AU",
+  tesseract_ocr:  "PNG / JPEG / BMP / GIF / WEBP",
+  zbarimg:        "PNG / JPEG / BMP / GIF / WEBP",
+  identify:       "PNG / JPEG / BMP / GIF / WEBP / TIFF",
+  stegoveritas:   "PNG / JPEG / BMP / GIF / WEBP",
+  ffmpeg_info:    "Audio / Video files",
+  sox_info:       "Audio files",
+  sox_spectrogram:"Audio files",
+  mediainfo:      "Audio / Video files",
+  dtmf_detect:    "Audio files",
+  morse_detect:   "Audio files",
+  wavsteg:        "WAV files",
+};
+
+function isFileTypeUnsupported(result: unknown): boolean {
+  if (typeof result !== "string") return false;
+  const r = result.toLowerCase();
+  return (
+    r.includes("only works with") ||
+    r.includes("only operates on") ||
+    r.includes("not available for this file type") ||
+    r.includes("only supported") ||
+    r.includes("only work with")
+  );
+}
+
+function isToolNotInstalled(result: unknown): boolean {
+  if (typeof result !== "string") return false;
+  const r = result.toLowerCase();
+  return r.includes("not installed") || r.includes("not available in path");
+}
+
 function ToolResultCard({ tool, result }: { tool: string; result: string | object | undefined }) {
   const label = TOOL_LABELS[tool] ?? tool;
+  const accepted = TOOL_ACCEPTED_TYPES[tool];
+
+  if (isFileTypeUnsupported(result)) {
+    return (
+      <div className="bg-zinc-900 border border-red-900/60 rounded-xl p-5 shadow-lg flex items-start gap-4">
+        <div className="mt-0.5 text-red-500 text-xl shrink-0">⛔</div>
+        <div>
+          <h3 className="text-red-400 font-bold uppercase tracking-wider text-sm mb-1">{label}</h3>
+          <p className="text-red-300 text-sm font-medium">
+            This file type is not supported by <span className="font-mono">{label}</span>.
+          </p>
+          {accepted && (
+            <p className="text-zinc-500 text-xs mt-1">
+              Supported formats: <span className="text-zinc-400 font-mono">{accepted}</span>
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (isToolNotInstalled(result)) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-700/50 rounded-xl p-5 shadow-lg flex items-start gap-4 opacity-60">
+        <div className="mt-0.5 text-zinc-500 text-xl shrink-0">🔧</div>
+        <div>
+          <h3 className="text-zinc-400 font-bold uppercase tracking-wider text-sm mb-1">{label}</h3>
+          <p className="text-zinc-500 text-sm">Tool not installed in this environment.</p>
+        </div>
+      </div>
+    );
+  }
 
   // Spectrogram — show the image
   if (tool === "sox_spectrogram" && result && typeof result === "object") {
@@ -136,12 +207,32 @@ function ToolResultCard({ tool, result }: { tool: string; result: string | objec
     );
   }
 
-  // Default card — same as forensics page
+  // WavSteg LSB extraction
+  if (tool === "wavsteg" && result && typeof result === "object") {
+    const r = result as { found: boolean; data: string | null; message: string };
+    return (
+      <div className={`bg-zinc-900 border ${r.found ? "border-green-600" : "border-zinc-700"} rounded-xl p-6 shadow-lg`}>
+        <h3 className={`${r.found ? "text-green-400" : "text-lime-400"} text-xl font-bold mb-3 uppercase tracking-wider flex items-center gap-2`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${r.found ? "bg-green-400" : "bg-lime-400"} animate-pulse`} />
+          WavSteg LSB (WAV)
+        </h3>
+        {r.found ? (
+          <div className="space-y-3">
+            <div className="p-3 bg-green-900/30 border border-green-700/50 rounded-lg text-green-400 font-bold">🔓 {r.message}</div>
+            <pre className="text-green-300 whitespace-pre-wrap bg-black/80 rounded p-4 text-sm font-mono select-all">{r.data}</pre>
+          </div>
+        ) : (
+          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400">ℹ️ {r.message}</div>
+        )}
+      </div>
+    );
+  }
+
+  // Default card
   const isError = typeof result === "string" && (
     result.toLowerCase().includes("error") ||
     result.toLowerCase().includes("failed") ||
-    result.toLowerCase().includes("not found") ||
-    result.toLowerCase().includes("not installed") ||
+    result.toLowerCase().includes("cannot") ||
     result.includes("Exception")
   );
 
@@ -277,7 +368,7 @@ export default function AudioForensics() {
     <div className="min-h-screen bg-background">
 
       {/* ── Waveform Header ──────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden pt-20 pb-10 px-4">
+      <div className="relative overflow-hidden pt-4 pb-10 px-4">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-cyan-500/4 rounded-full blur-3xl" />
         </div>
